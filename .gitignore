@@ -1,0 +1,21 @@
+# OS/editor
+.DS_Store
+.vscode/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.venv/
+
+# Secrets
+api_keys.txt
+
+# Large training artifacts (checkpoints)
+checker1/
+
+# Generated media and render outputs
+output/
+
