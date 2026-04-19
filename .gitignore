@@ -19,6 +19,7 @@ api_keys.txt
 checker1/*
 !checker1/model/
 !checker1/model/**
+checker1/model/**/.DS_Store
 
 # Generated media and render outputs
 output/
