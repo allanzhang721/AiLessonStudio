@@ -15,7 +15,10 @@ __pycache__/
 # It should be created locally with the necessary API keys and secrets for development.
 api_keys.txt
 
-# Model artifacts are tracked via Git LFS (see .gitattributes).
+# Keep checker1/model under version control (via Git LFS), ignore other checker1 content.
+checker1/*
+!checker1/model/
+!checker1/model/**
 
 # Generated media and render outputs
 output/
