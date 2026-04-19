@@ -11,10 +11,11 @@ __pycache__/
 .venv/
 
 # Secrets
+# Do not sync this file to version control.
+# It should be created locally with the necessary API keys and secrets for development.
 api_keys.txt
 
-# Large training artifacts (checkpoints)
-checker1/
+# Model artifacts are tracked via Git LFS (see .gitattributes).
 
 # Generated media and render outputs
 output/
