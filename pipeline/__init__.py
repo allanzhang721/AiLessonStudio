@@ -24,6 +24,7 @@ Pipeline stages in order:
 
 from .checker import checker1_predict, checker1_loop, build_checker_input_text
 from .frame_checker import checker2_validate_frames
+from .student_analyzer import analyze_student_weakness, infer_concept_tags
 from .clients import build_text_client, build_image_client, build_video_client, build_tts_client
 from .api_keys import available_text_providers, available_image_providers, available_video_providers
 from .planner import question_explanation_grade_to_plan
@@ -37,6 +38,8 @@ __all__ = [
     "checker1_loop",
     "build_checker_input_text",
     "checker2_validate_frames",
+    "analyze_student_weakness",
+    "infer_concept_tags",
     "build_text_client",
     "build_image_client",
     "build_video_client",

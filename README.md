@@ -16,7 +16,8 @@ Built by **Jiaxing BCOS**
 | **Storyboard video** | Frames assembled into GIF + MP4 with optional TTS voiceover |
 | **Single API video (Sora)** | Continuous 12-second narrated video generated from anchor frame + plan |
 | **Relevant sources** | LLM suggests websites, YouTube channels, and textbooks for the topic |
-| **Interactive quiz** | 5 MCQs generated from the explanation; radio buttons + Check Answers + score |
+| **Interactive quiz** | 5 MCQs generated from the explanation; robust parser supports varied LLM formats; radio buttons + Check Answers + score |
+| **Student weakness analyzer** | Concept-level diagnostics from quiz correctness, confidence, response time, and Checker 2 frame risk |
 | **Downloads** | ZIP frames, MP4 video, TXT explanation, MD quiz |
 | **Multi-language** | Explanation and quiz in English, 中文, Español, Français, Deutsch, 日本語, 한국어 |
 | **Multi-provider** | Text: OpenAI GPT-4o or DeepSeek; Images: OpenAI gpt-image-1 or Wanx |
@@ -45,6 +46,7 @@ L15/
 │   ├── api_keys.py           # Key loader from api_keys.txt
 │   ├── config.py             # Model names and global constants
 │   ├── prompts.py            # Prompt builders
+│   ├── student_analyzer.py   # Student weakness scoring + remediation suggestions
 │   ├── validation.py         # Specificity + relevance scoring gates
 │   └── utils.py              # Shared utilities
 │
@@ -94,6 +96,9 @@ Question + Subject + Grade
                 │
                 ▼  (optional)
        Sora single-video → 12 s narrated clip
+                │
+                ▼
+       Quiz submission → Student Weakness Analyzer
 ```
 
 ---
@@ -169,8 +174,9 @@ Open **http://localhost:8501** in your browser.
 3. Enter **Question**, **Subject**, **Grade** (7–12), **Language**, and select providers
 4. Click **Generate Explanation** → explanation, quiz, and sources are generated
 5. Switch to the **📝 Quiz** and **📚 Resources** tabs to review
-6. *(Optional)* Click **Generate Images & Video** → Checker 1 runs, then frames + video are produced
-7. View frames and videos in the **📖 Lesson** tab
+6. Click **Check Answers** in **📝 Quiz** to see concept-level weakness diagnostics and recommended next actions
+7. *(Optional)* Click **Generate Images & Video** → Checker 1 and Checker 2 run, then frames + video are produced
+8. View frames and videos in the **📖 Lesson** tab
 
 ### Demo mode (no API required)
 
@@ -191,9 +197,9 @@ Mode toggle · Question input · Settings (subject, grade, language, providers) 
 | Tab | Content |
 |-----|---------|
 | 📖 **Lesson** | Step 1: explanation · Step 2: run summary + frames viewer + video player |
-| 📝 **Quiz** | 5 MCQs with radio buttons, Check Answers, Reset, score |
+| 📝 **Quiz** | 5 MCQs with confidence sliders, Check Answers, Reset, score, and weakness diagnostics |
 | 📚 **Resources** | Learning sources + download buttons (ZIP, MP4, TXT, MD) |
-| ℹ️ **Details** | Checker 1 per-round results and error-type probabilities |
+| ℹ️ **Details** | Checker 1 rounds, Checker 2 frame quality, and full analyzer JSON |
 
 ---
 
@@ -210,6 +216,7 @@ output/<question_id>/
 ├── storyboard.gif
 ├── sources.md
 ├── quiz.md
+├── student_analyzer.json
 ├── voiceover_clean.mp3
 └── single_api_video/
     ├── single_api_video.mp4

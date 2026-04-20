@@ -1,18 +1,19 @@
 # VisualLesson AI — Pipeline Reference
 
-Last updated: 2026-04-14  
+Last updated: 2026-04-20  
 Built by **Jiaxing BCOS**
 
 ---
 
 ## 1. High-level Architecture
 
-VisualLesson AI converts a classroom question into a fully narrated visual lesson through a multi-stage pipeline with two output paths:
+VisualLesson AI converts a classroom question into a fully narrated visual lesson through a multi-stage pipeline with three output/diagnostic paths:
 
 | Path | Description |
 |------|-------------|
 | **Storyboard path** | Explanation → Checker 1 quality gate → 7-frame plan → frame generation → GIF + MP4 |
 | **Single API video path** | Reuses anchor frame + plan → Sora continuous clip → caption burn → voiceover mux |
+| **Diagnostic path** | Quiz attempts + confidence + timing (+ Checker 2 risk) → Student Weakness Analyzer |
 
 ### Key source files
 
@@ -28,6 +29,7 @@ VisualLesson AI converts a classroom question into a fully narrated visual lesso
 | `pipeline/api_keys.py` | Key loader from `api_keys.txt` with quote stripping |
 | `pipeline/config.py` | Global constants — model names, thresholds |
 | `pipeline/prompts.py` | Prompt builders |
+| `pipeline/student_analyzer.py` | Concept-level weakness scoring + remediation suggestions |
 | `pipeline/validation.py` | Specificity + relevance scoring gates |
 | `pipeline/utils.py` | Shared utilities |
 | `single_api_video.py` | Single-video API generation + caption + voiceover |
@@ -82,9 +84,9 @@ The app uses a **sidebar + 4-tab** layout:
 | Tab | Content |
 |-----|---------|
 | 📖 Lesson | Step 1: explanation with provider badge → Step 2: run summary + frames + videos (only visible after explanation exists) |
-| 📝 Quiz | Interactive 5-question MCQ with radio buttons, Check Answers, Reset, score display |
+| 📝 Quiz | Interactive 5-question MCQ with confidence sliders, Check Answers, Reset, score, and weakness diagnostics |
 | 📚 Resources | Relevant sources (websites, YouTube, textbooks) + Downloads (ZIP frames, MP4 video, TXT explanation, MD quiz) |
-| ℹ️ Details | Checker 1 per-round results with probabilities |
+| ℹ️ Details | Checker 1 per-round results, Checker 2 frame quality, and analyzer JSON |
 
 ### Workflow
 
@@ -93,6 +95,7 @@ The app uses a **sidebar + 4-tab** layout:
 1. Enter question, subject, grade, language, providers
 2. Click **Generate Explanation** → calls LLM, generates sources and quiz in one pass
 3. (Optional) Click **Generate Images & Video** → runs full pipeline (checker → plan → frames → video)
+4. Click **Check Answers** in Quiz tab → computes concept-level weakness report and suggested interventions
 
 **Demo mode:**
 
@@ -119,7 +122,10 @@ English, 中文, Español, Français, Deutsch, 日本語, 한국어
 | `relevant_sources` | Markdown list of sources |
 | `generated_quiz` | Markdown quiz (5 MCQ) |
 | `quiz_submitted` | Bool — whether Check Answers was clicked |
+| `analyzer_result` | Dict — weakness report (top weak concepts + recommendations) |
+| `quiz_attempt_history` | List of parsed attempts (correctness, confidence, response time) |
 | `checker_result` | Dict with rounds, labels, confidences |
+| `checker2_result` | Dict with frame quality scores and failed steps |
 | `active_run_dir` | Path string to current output folder |
 | `saved_demo_choice` | Selected demo label key |
 
@@ -348,13 +354,44 @@ In addition to the explanation, the app generates per-run:
 | Content | Function | Saved to |
 |---------|----------|----------|
 | Relevant sources | `_generate_sources()` — 5–8 curated URLs + descriptions | `sources.md` |
-| Quiz | `_generate_quiz()` — 5 MCQ with answer + explanation | `quiz.md` |
+| Quiz | `_generate_quiz()` — 5 MCQ with answer + explanation using strict parseable template | `quiz.md` |
 
 Both are loaded automatically in Demo mode if the files exist in the run directory.
 
+Quiz parsing in the UI is tolerant to common LLM format variations (for example: `1.`, `Question 1:`, `Q1:` headers; `Answer:` / `Correct Answer:`; `Reason:` / `Explanation:`) to avoid missing question text in API mode.
+
 ---
 
-## 11. Scoring Gates
+## 11. Student Weakness Analyzer (Quiz Diagnostics)
+
+### Entrypoint
+
+`analyze_student_weakness(attempts, checker2_result=..., top_k=3)`
+
+### Inputs
+
+- Quiz attempts from the UI:
+  - parsed question text
+  - selected answer correctness
+  - confidence slider (1–5)
+  - per-question response time
+- Optional Checker 2 output (`overall_score`, per-frame pass/fail)
+
+### Core outputs
+
+- `overall_accuracy`
+- `overall_avg_response_seconds`
+- `content_risk` (derived from Checker 2)
+- `top_weak_concepts` (ranked)
+- `recommended_actions` per weak concept
+
+### Saved artifact
+
+- `output/<question_id>/student_analyzer.json` (written after quiz submission if a run is active)
+
+---
+
+## 12. Scoring Gates
 
 ### Specificity score
 
@@ -384,7 +421,7 @@ where $h$ = count of off-topic leakage terms.
 
 ---
 
-## 12. Prompt Design Contracts
+## 13. Prompt Design Contracts
 
 Each planner prompt is composed of 5 blocks:
 
@@ -402,7 +439,7 @@ Absolute rendering constraints:
 
 ---
 
-## 13. Failure Modes and Fallback Strategy
+## 14. Failure Modes and Fallback Strategy
 
 | Stage | Failure | Fallback |
 |-------|---------|----------|
@@ -412,10 +449,11 @@ Absolute rendering constraints:
 | Single video TTS | API fails | macOS `say` fallback |
 | Checker | Model load fails | Skip checker; accept explanation |
 | Demo load | `sources.md` or `quiz.md` missing | Sources/quiz silently omitted |
+| Quiz parsing | LLM format drift | Robust parser fallback; malformed blocks marked instead of dropped |
 
 ---
 
-## 14. Run Output Directory Structure
+## 15. Run Output Directory Structure
 
 ```
 output/<question_id>/
@@ -431,6 +469,7 @@ output/<question_id>/
 ├── voiceover_clean.mp3
 ├── sources.md
 ├── quiz.md
+├── student_analyzer.json
 ├── prompts/
 │   ├── planner_prompt.txt
 │   └── step_XX_*.txt
@@ -447,7 +486,7 @@ output/<question_id>/
 
 ---
 
-## 15. Curated Demo Run
+## 16. Curated Demo Run
 
 **Folder:** `output/good_ecology_foodweb_species_removal_cascade/`
 
@@ -464,7 +503,7 @@ output/<question_id>/
 
 ---
 
-## 16. Practical Tuning Levers
+## 17. Practical Tuning Levers
 
 | Lever | Impact |
 |-------|--------|
@@ -476,10 +515,11 @@ output/<question_id>/
 | Edit-step ADD constraints | Prevents frame drift/occlusion |
 | `max_rounds` in checker | Trade-off: correction quality vs. latency |
 | `confidence_threshold` in checker | Sensitivity to errors |
+| Analyzer `top_k` | Number of weak concepts surfaced to learner/teacher |
 
 ---
 
-## 17. Mental Model
+## 18. Mental Model
 
 ```
 Curriculum model   →   Rendering model   →   Packaging model
@@ -491,358 +531,3 @@ Curriculum model   →   Rendering model   →   Packaging model
 Quality frontier is controlled primarily by Stage A plan specificity and Stage B edit determinism.
 
 
-## 1) High-level Architecture
-
-This project has two production paths:
-
-1. Storyboard path (explanation → Checker 1 quality gate → 7-frame plan → frame generation/edit → GIF/MP4)
-2. Single API video path (Sora continuous clip → optional caption burn → optional voiceover mux)
-
-Main orchestrator:
-- pipeline/pipeline.py
-
-Key modules:
-- pipeline/checker.py    ← NEW: DistilBERT error-type classifier + GPT repair loop
-- pipeline/planner.py
-- pipeline/image_pipeline.py
-- pipeline/video_pipeline.py
-- pipeline/prompts.py
-- pipeline/validation.py
-- pipeline/utils.py
-- single_api_video.py
-
-## 2) End-to-end Storyboard Pipeline
-
-### Stage 0. Checker 1 — Explanation quality gate
-
-Entrypoint:
-- checker1_loop(client, question, explanation, grade, subject, max_rounds, confidence_threshold)
-
-Model:
-- Fine-tuned DistilBERT (distilbert-base-uncased) for 5-class error-type classification
-- Best checkpoint: checkpoint-360 (macro-F1 = 0.9019)
-- Trained on human-verified inconsistent explanations from L9/L10 datasets
-
-Input format:
-```
-Subject: Physics
-Grade: 9
-Question: Why does higher radiant heat flux reduce ignition time?
-Explanation: Higher heat flux increases oxygen concentration, so ignition happens sooner.
-```
-
-Tokenized with max_length=256.
-
-Output — one of 5 error-type labels:
-
-| Label ID | Label | Description |
-|----------|-------|-------------|
-| 0 | ConceptError | Applies the wrong principle or definition |
-| 1 | GradeMismatch | Uses concepts beyond the target grade level |
-| 2 | LogicalGap | Jumps from premise to conclusion without mechanism |
-| 3 | MisleadingAnalogy | Uses a convincing but incorrect analogy |
-| 4 | MissingCondition | Omits key assumptions or limiting conditions |
-
-Inference math:
-
-The input is tokenized and encoded by DistilBERT into hidden states $H \in \mathbb{R}^{T \times 768}$.
-The pooled first-token representation $h \in \mathbb{R}^{768}$ is mapped to logits:
-
-$$
-z = Wh + b, \quad W \in \mathbb{R}^{5 \times 768}, b \in \mathbb{R}^5
-$$
-
-Softmax gives class probabilities:
-
-$$
-p(y=k \mid x) = \frac{e^{z_k}}{\sum_{j=1}^5 e^{z_j}}
-$$
-
-Prediction: $\hat{y} = \arg\max_k p(y=k \mid x)$
-
-Decision logic:
-- If confidence below threshold (default 0.5): **accept** (explanation is likely fine)
-- If confidence above threshold: **flag** the error type, ask GPT to repair
-- GPT repair uses error-type-specific instructions (see `_REPAIR_INSTRUCTIONS` in checker.py)
-- Re-check after repair; loop up to `max_rounds` (default 3)
-
-The model was trained only on *Inconsistent* explanations, so low confidence on
-any error class implies the explanation does not strongly match any known error pattern.
-
-Training data generation:
-- DeepSeek API was used to generate intentionally flawed explanations under controlled prompts
-- For GPT-based pipelines, the same prompt templates work with GPT (see checker1/notebooks/)
-- Human annotators verified all labels; GPT-generated labels were treated as hypotheses only
-
-Artifacts:
-- checker_result dict in run_manifest.json (rounds, labels, confidences, revisions)
-
-### Stage A. Plan generation (text → structured 7-step plan)
-
-Entrypoint:
-- question_explanation_grade_to_plan(...)
-
-Input:
-- question
-- canonical explanation
-- grade
-- subject
-
-Output:
-- plan dict with required keys:
-  - question_id, question_text, canonical_answer
-  - visual_family, render_mode
-  - scene_bible
-  - steps (exactly 7)
-  - captions (exactly 7)
-  - math_elements
-
-Flow:
-1. Build fallback deterministic plan template.
-2. If OpenAI client exists:
-   - Generate pedagogical brief.
-   - Build strict planner prompt.
-   - Parse JSON output.
-   - Normalize schema and fill missing fields from fallback.
-   - Validate schema.
-   - Run specificity and relevance gates.
-   - Optionally issue repair/refinement prompts.
-3. If no client or final validation fails: return fallback plan.
-
-Artifacts:
-- output/<question_id>/plan.json
-- output/<question_id>/prompts/planner_prompt.txt (and related debug prompts)
-
-### Stage B. Frame generation/edit (plan -> 7 PNGs)
-
-Entrypoint:
-- plan_to_images(plan, out_dir, client)
-
-Flow per step:
-1. Validate plan schema.
-2. Step 1: images.generate with first-frame prompt.
-3. Steps 2-7: images.edit (inpainting) with prior raw frame as base.
-4. Overlay formula tiles from math_elements if active.
-5. Add bottom caption band and step counter.
-6. Save raw + final frame.
-
-Retries:
-- Up to 3 attempts with backoff for each OpenAI image call.
-
-Artifacts:
-- output/<question_id>/frames_raw/step_XX.png
-- output/<question_id>/frames/step_XX.png
-- output/<question_id>/prompts/step_XX_generate_prompt.txt or step_XX_edit_prompt.txt
-
-### Stage C. Video assembly
-
-Entrypoints:
-- make_gif(...)
-- build_narration_script(...)
-- synthesize_clean_voiceover(...)
-- images_to_video(...)
-
-Flow:
-1. Build GIF from final frames.
-2. Build narration script from captions.
-3. Try TTS (if OpenAI client available).
-4. Build MP4 slideshow.
-5. If audio exists, mux with ffmpeg.
-
-Artifacts:
-- output/<question_id>/storyboard.gif
-- output/<question_id>/storyboard.mp4
-- output/<question_id>/voiceover_script.txt
-- output/<question_id>/voiceover_clean.mp3 (if successful)
-- output/<question_id>/run_manifest.json
-
-## 3) Prompt Design Contracts
-
-Prompt builder composes 5 blocks:
-- teaching context
-- canvas/zones
-- style notation (scene_bible)
-- plan spec (FORBIDDEN / KEEP / ADD ONE)
-- strict render contract
-
-Absolute constraints include:
-- flat 2D, no photorealism
-- no 3D perspective/shadows
-- keep bottom reserved area clear during generation
-- preserve old objects in edit steps
-- add only requested new content
-- maintain arrow semantics and avoid duplicates
-
-## 4) Math and Scoring Heuristics
-
-## 4.1 Specificity score
-
-Per-step score is weighted by actionable content, positional constraints, style constraints, arrow semantics, and one-new-element focus.
-
-Overall score:
-
-$$
-S = \frac{1}{N} \sum_{i=1}^{N} \mathrm{clip}_{[0,1]}(s_i), \quad N=7
-$$
-
-Default gate:
-
-$$
-S \ge 0.62
-$$
-
-Notes:
-- Arrow with explicit direction can add score.
-- Arrow without explicit source/target causes penalty and can hard-fail with strict mode.
-
-## 4.2 Relevance score
-
-Keyword overlap between source (question + explanation + subject) and plan text is computed, then leakage penalties (for off-topic coding terms) are applied.
-
-$$
-R = \mathrm{clip}_{[0,1]}\left(\text{overlap\_score} - p_{leak} + 0.15\right)
-$$
-
-with
-
-$$
-p_{leak} = \min(0.7, 0.2h)
-$$
-
-where $h$ is leakage term count.
-
-Default gate:
-
-$$
-R \ge 0.45
-$$
-
-## 4.3 Storyboard FPS estimation (when voiceover exists)
-
-Words-to-duration heuristic:
-
-$$
-T = \max\left(14, \frac{W}{2.6}\right)
-$$
-
-where $W$ is word count.
-
-Then:
-
-$$
-fps = \mathrm{clip}_{[0.15,1.0]}\left(\frac{F}{T}\right)
-$$
-
-where $F$ is number of frames.
-
-If no voiceover is available, pipeline uses fps = 1.0.
-
-## 5) Single API Video Pipeline (Sora)
-
-Entrypoint:
-- generate_single_video_from_run_dir(...)
-
-Flow:
-1. Load existing plan.json and step_01 anchor frame.
-2. Resize/letterbox anchor to model-supported size.
-3. Build one timeline prompt from all 7 steps.
-4. Generate continuous video with Sora.
-5. Optional: burn synchronized caption pages.
-6. Optional: synthesize voiceover.
-7. Extend video if narration longer than clip.
-8. Mux narration audio track.
-
-Outputs under:
-- output/<question_id>/single_api_video/
-
-Common files:
-- single_api_video.mp4
-- single_api_video_captioned.mp4
-- single_api_video_captioned_with_voiceover.mp4
-- single_video_prompt.txt
-- single_video_job.json
-- single_video_result.json
-- voiceover_script.txt
-- voiceover_clean.mp3
-
-## 6) Current Project Outputs (as of this snapshot)
-
-Detected run directories:
-- output/good_ecology_foodweb_species_removal_cascade/
-- output/q_why_can_removing_one_species_from_a_food_ec6a8e/
-
-### Curated run summary
-
-Run:
-- output/good_ecology_foodweb_species_removal_cascade/
-
-Manifest highlights:
-- used_openai: true
-- plan_seconds: 101.862
-- images_seconds: 300.792
-- gif_seconds: 1.156
-- voiceover_seconds: 0.0
-- video_seconds: 0.537
-- total_seconds: 404.362
-- planner source: openai_specificity_warned
-- specificity_score: 0.9042857142857142
-- relevance_score: 0.9500000000000001
-
-Interpretation:
-- Image generation/edit dominates runtime.
-- Planning and validation quality is strong.
-- Storyboard voiceover was not produced in this run, but single-video branch did produce voiceover.
-
-### Single-video result summary
-
-Run file:
-- output/good_ecology_foodweb_species_removal_cascade/single_api_video/single_video_result.json
-
-Highlights:
-- model: sora-2
-- status: completed
-- seconds: 12
-- size: 1280x720
-- final video path: single_api_video_captioned_with_voiceover.mp4
-
-### Fallback run summary
-
-Run:
-- output/q_why_can_removing_one_species_from_a_food_ec6a8e/
-
-Highlights:
-- planner source: fallback_no_client
-- generic 7-step fallback plan used
-- useful for offline/debug baseline behavior
-
-## 7) Failure Modes and Fallback Strategy
-
-Planner:
-- JSON parse fail, schema fail, or gate fail -> repair/refine attempts -> fallback if still invalid.
-
-Image stage:
-- OpenAI call retries up to 3 times.
-- If no client, placeholder frames are generated locally.
-
-Video stage:
-- If ffmpeg unavailable, mux step is skipped and silent video is kept.
-- For single video, if API TTS fails, macOS say fallback can be used.
-
-## 8) Practical Tuning Levers
-
-Fastest quality-impacting knobs:
-1. Planner prompt strictness (coordinates, arrow direction semantics).
-2. Specificity threshold and arrow hard-enforcement policy.
-3. Caption length (affects TTS duration and slideshow fps target).
-4. Sora clip seconds and size choice.
-5. Edit-step ADD constraints to avoid drift/occlusion.
-
-## 9) Minimal Mental Model
-
-Think of the system as:
-
-1. Curriculum model (pedagogical brief + structured teaching plan)
-2. Rendering model (generate first frame, then deterministic inpaint edits)
-3. Packaging model (caption band, audio, mux, manifests)
-
-The quality frontier is mostly controlled by Stage A plan specificity and Stage B edit determinism.

@@ -37,6 +37,7 @@ import importlib
 import importlib.util
 import html
 import os
+import time
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -47,6 +48,7 @@ import streamlit as st
 
 from pipeline.config import PLANNER_MODEL, OPENAI_TEXT_MODEL, DEEPSEEK_TEXT_MODEL
 from pipeline.checker import checker1_predict
+from pipeline.student_analyzer import analyze_student_weakness, infer_concept_tags
 from pipeline.clients import build_text_client, chat_completion
 from pipeline.api_keys import available_text_providers, available_image_providers, available_video_providers
 from pipeline.pipeline import run_pipeline
@@ -210,6 +212,8 @@ def _ensure_state_defaults() -> None:
         "checker2_result": None,
         "relevant_sources": "",
         "generated_quiz": "",
+        "analyzer_result": None,
+        "quiz_attempt_history": [],
         "language": "English",
         "text_provider": "openai",
         "image_provider": "openai",
@@ -287,12 +291,23 @@ def _generate_quiz(question: str, explanation: str, subject: str, grade: int, pr
         f"Subject: {subject or 'General'}\nGrade: {grade}\n"
         f"Original Question: {question}\n\n"
         f"Explanation:\n{explanation}\n\n"
-        "For each question, provide:\n"
-        "1. The question\n"
-        "2. Four answer choices (A, B, C, D)\n"
-        "3. The correct answer\n"
-        "4. A brief explanation of why it's correct\n\n"
-        f"Format clearly with numbered questions.{lang_instruction}"
+        "Return ONLY in this exact plain-text template and order:\n\n"
+        "1. <question text>\n"
+        "A) <choice A>\n"
+        "B) <choice B>\n"
+        "C) <choice C>\n"
+        "D) <choice D>\n"
+        "Correct Answer: <A|B|C|D>\n"
+        "Explanation: <one short sentence>\n\n"
+        "2. <question text>\n"
+        "A) ...\n"
+        "B) ...\n"
+        "C) ...\n"
+        "D) ...\n"
+        "Correct Answer: <A|B|C|D>\n"
+        "Explanation: ...\n\n"
+        "Repeat through question 5. Do not use markdown tables. Do not omit question text."
+        f"{lang_instruction}"
     )
     return chat_completion(client, model, prompt).strip()
 
@@ -332,48 +347,153 @@ def _parse_quiz(quiz_text: str) -> list[dict]:
 
     Returns a list of dicts: {question, choices: [(label, text)], answer, explanation}
     """
-    questions = []
-    # Split by numbered questions
-    blocks = _re.split(r'\n(?=\d+\.\s)', quiz_text.strip())
-    for block in blocks:
-        block = block.strip()
-        if not block:
+    def _strip_md(text: str) -> str:
+        s = text.strip()
+        s = _re.sub(r"^[-*\s]+", "", s)
+        s = _re.sub(r"\*\*", "", s)
+        return s.strip()
+
+    def _push_current(buf: list[dict], current: dict[str, Any]) -> dict[str, Any]:
+        if current.get("question") and current.get("choices"):
+            if not current.get("answer") and current["choices"]:
+                current["answer"] = current["choices"][0][0]
+            buf.append(
+                {
+                    "question": str(current.get("question", "")).strip(),
+                    "choices": list(current.get("choices", [])),
+                    "answer": str(current.get("answer", "")).strip().upper(),
+                    "explanation": str(current.get("explanation", "")).strip(),
+                }
+            )
+        return {"question": "", "choices": [], "answer": "", "explanation": ""}
+
+    lines = [line.rstrip() for line in quiz_text.strip().splitlines() if line.strip()]
+    questions: list[dict] = []
+    current: dict[str, Any] = {"question": "", "choices": [], "answer": "", "explanation": ""}
+    expect_question_line = False
+
+    q_header_re = _re.compile(r"^\s*(?:\*\*)?(?:Q(?:uestion)?\s*\d+|\d+)[\).:\-\s]*(.*)$", _re.IGNORECASE)
+    choice_re = _re.compile(r"^\s*[-*\s]*([A-D])[\).\]:-]\s*(.+)$", _re.IGNORECASE)
+    answer_re = _re.compile(r"^\s*[-*\s]*(?:correct\s*answer|answer|correct)\s*[:\-]?\s*([A-D])\b", _re.IGNORECASE)
+    explain_re = _re.compile(r"^\s*[-*\s]*(?:explanation|reason)\s*[:\-]?\s*(.*)$", _re.IGNORECASE)
+
+    for raw_line in lines:
+        line = _strip_md(raw_line)
+        if not line:
             continue
-        lines = block.split('\n')
-        # First line is the question
-        q_match = _re.match(r'\d+\.\s*\*?\*?(.*?)\*?\*?\s*$', lines[0])
-        question = q_match.group(1).strip('* ') if q_match else lines[0]
 
-        choices = []
-        answer = ""
-        explanation = ""
-        for line in lines[1:]:
-            line_s = line.strip()
-            # Match choice lines like "- A) ...", "A. ...", "A) ..."
-            choice_match = _re.match(r'[-\s]*([A-D])[).\]]\s*(.*)', line_s)
-            if choice_match:
-                choices.append((choice_match.group(1), choice_match.group(2).strip()))
-                continue
-            # Match correct answer line
-            ans_match = _re.match(r'\*?\*?Correct Answer:?\s*\*?\*?\s*([A-D])', line_s, _re.IGNORECASE)
-            if ans_match:
-                answer = ans_match.group(1).upper()
-                continue
-            # Everything else after answer is explanation
-            if answer and line_s:
-                explanation += line_s + " "
+        qh = q_header_re.match(line)
+        if qh:
+            current = _push_current(questions, current)
+            q_text = _strip_md(qh.group(1))
+            if q_text:
+                current["question"] = q_text
+                expect_question_line = False
+            else:
+                expect_question_line = True
+            continue
 
-        if question and choices:
-            questions.append({
-                "question": question,
-                "choices": choices,
-                "answer": answer,
-                "explanation": explanation.strip(),
-            })
+        ch = choice_re.match(line)
+        if ch:
+            if not current.get("question"):
+                # If choices appear before explicit question marker, start a fallback question.
+                current["question"] = "Question text missing from model output"
+            current["choices"].append((ch.group(1).upper(), _strip_md(ch.group(2))))
+            continue
+
+        ans = answer_re.match(line)
+        if ans:
+            current["answer"] = ans.group(1).upper()
+            continue
+
+        exp = explain_re.match(line)
+        if exp:
+            tail = _strip_md(exp.group(1))
+            if tail:
+                current["explanation"] = (str(current.get("explanation", "")) + " " + tail).strip()
+            continue
+
+        if expect_question_line and not current.get("question"):
+            current["question"] = line
+            expect_question_line = False
+            continue
+
+        if line.endswith("?") and not current.get("question"):
+            current["question"] = line
+            continue
+
+        if current.get("answer"):
+            current["explanation"] = (str(current.get("explanation", "")) + " " + line).strip()
+
+    _push_current(questions, current)
     return questions
 
 
-def _render_interactive_quiz(quiz_text: str) -> None:
+def _build_quiz_attempts(
+    questions: list[dict],
+    *,
+    subject: str,
+    explanation_text: str,
+    submitted_at: float,
+) -> list[dict[str, Any]]:
+    attempts: list[dict[str, Any]] = []
+    for i, q in enumerate(questions):
+        selected = st.session_state.get(f"quiz_q_{i}", "")
+        selected_label = selected[0] if selected else ""
+        correct_label = str(q.get("answer", "")).strip().upper()
+        start_key = f"quiz_start_{i}"
+        start_time = float(st.session_state.get(start_key, submitted_at))
+        elapsed = max(1.0, submitted_at - start_time)
+        confidence = int(st.session_state.get(f"quiz_conf_{i}", 3))
+        attempts.append(
+            {
+                "question_id": f"quiz_q_{i+1}",
+                "question_text": str(q.get("question", "")),
+                "concept_tags": infer_concept_tags(
+                    question_text=str(q.get("question", "")),
+                    explanation_text=explanation_text,
+                    subject=subject,
+                    max_tags=2,
+                ),
+                "correct": selected_label == correct_label,
+                "response_time_seconds": elapsed,
+                "confidence": confidence,
+            }
+        )
+    return attempts
+
+
+def _render_weakness_report(analyzer_result: dict[str, Any]) -> None:
+    if not analyzer_result or analyzer_result.get("status") != "ok":
+        return
+
+    st.markdown("### Student Weakness Analyzer")
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        st.metric("Overall Accuracy", f"{float(analyzer_result.get('overall_accuracy', 0.0)) * 100:.1f}%")
+    with c2:
+        st.metric("Avg Response Time", f"{float(analyzer_result.get('overall_avg_response_seconds', 0.0)):.1f}s")
+    with c3:
+        st.metric("Content Risk (Checker 2)", f"{float(analyzer_result.get('content_risk', 0.0)):.2f}")
+
+    top = analyzer_result.get("top_weak_concepts", [])
+    if isinstance(top, list) and top:
+        st.markdown("**Top Weak Concepts**")
+        for idx, row in enumerate(top, start=1):
+            concept = str(row.get("concept", "general"))
+            score = float(row.get("weakness_score", 0.0))
+            wtype = str(row.get("weakness_type", "moderate_gap"))
+            st.markdown(
+                f"**{idx}. {concept}** | weakness={score:.3f} | type={wtype} | "
+                f"accuracy={float(row.get('accuracy', 0.0)) * 100:.1f}%"
+            )
+            actions = row.get("recommended_actions", [])
+            if isinstance(actions, list):
+                for action in actions[:2]:
+                    st.write(f"- {action}")
+
+
+def _render_interactive_quiz(quiz_text: str, *, subject: str, explanation_text: str, checker2_result: dict[str, Any] | None) -> None:
     """Render quiz as interactive radio buttons with check answers."""
     questions = _parse_quiz(quiz_text)
     if not questions:
@@ -383,12 +503,29 @@ def _render_interactive_quiz(quiz_text: str) -> None:
 
     st.markdown("**Quiz — Test Your Understanding**")
 
+    quiz_signature = f"{len(questions)}::{hash(quiz_text)}"
+    if st.session_state.get("_quiz_signature") != quiz_signature:
+        st.session_state["_quiz_signature"] = quiz_signature
+        st.session_state["quiz_submitted"] = False
+        st.session_state["analyzer_result"] = None
+        st.session_state["quiz_attempt_history"] = []
+        for i in range(len(questions)):
+            st.session_state.pop(f"quiz_start_{i}", None)
+            st.session_state.pop(f"quiz_conf_{i}", None)
+            st.session_state.pop(f"quiz_q_{i}", None)
+
     # Initialize quiz state
     if "quiz_submitted" not in st.session_state:
         st.session_state["quiz_submitted"] = False
 
+    now = time.time()
+
     for i, q in enumerate(questions):
         st.markdown(f"**{i + 1}. {q['question']}**")
+        start_key = f"quiz_start_{i}"
+        if start_key not in st.session_state:
+            st.session_state[start_key] = now
+
         options = [f"{label}) {text}" for label, text in q["choices"]]
         selected = st.radio(
             f"Q{i + 1}",
@@ -396,6 +533,13 @@ def _render_interactive_quiz(quiz_text: str) -> None:
             index=None,
             key=f"quiz_q_{i}",
             label_visibility="collapsed",
+        )
+        st.slider(
+            "Confidence (1=guess, 5=very sure)",
+            min_value=1,
+            max_value=5,
+            value=int(st.session_state.get(f"quiz_conf_{i}", 3)),
+            key=f"quiz_conf_{i}",
         )
 
         # Show result if submitted
@@ -411,13 +555,44 @@ def _render_interactive_quiz(quiz_text: str) -> None:
     with col1:
         if st.button("Check Answers", type="primary", use_container_width=True, key="quiz_check"):
             st.session_state["quiz_submitted"] = True
+            submitted_at = time.time()
+            attempts = _build_quiz_attempts(
+                questions,
+                subject=subject,
+                explanation_text=explanation_text,
+                submitted_at=submitted_at,
+            )
+            st.session_state["quiz_attempt_history"] = attempts
+            analyzer_result = analyze_student_weakness(
+                attempts,
+                checker2_result=checker2_result,
+                top_k=3,
+            )
+            st.session_state["analyzer_result"] = analyzer_result
+
+            active_run_dir = st.session_state.get("active_run_dir")
+            if active_run_dir and isinstance(analyzer_result, dict):
+                try:
+                    run_path = Path(active_run_dir)
+                    run_path.joinpath("student_analyzer.json").write_text(
+                        json.dumps(analyzer_result, indent=2, ensure_ascii=False),
+                        encoding="utf-8",
+                    )
+                except Exception:
+                    pass
             st.rerun()
     with col2:
         if st.button("Reset Quiz", use_container_width=True, key="quiz_reset"):
             st.session_state["quiz_submitted"] = False
+            st.session_state["analyzer_result"] = None
+            st.session_state["quiz_attempt_history"] = []
             for i in range(len(questions)):
                 if f"quiz_q_{i}" in st.session_state:
                     del st.session_state[f"quiz_q_{i}"]
+                if f"quiz_conf_{i}" in st.session_state:
+                    del st.session_state[f"quiz_conf_{i}"]
+                if f"quiz_start_{i}" in st.session_state:
+                    del st.session_state[f"quiz_start_{i}"]
             st.rerun()
 
     if st.session_state.get("quiz_submitted"):
@@ -427,6 +602,11 @@ def _render_interactive_quiz(quiz_text: str) -> None:
             if sel and sel[0] == q["answer"]:
                 correct += 1
         st.markdown(f"### Score: {correct} / {len(questions)}")
+
+    analyzer_result = st.session_state.get("analyzer_result")
+    if analyzer_result and isinstance(analyzer_result, dict):
+        st.divider()
+        _render_weakness_report(analyzer_result)
 
 
 def _generate_sources(question: str, subject: str, grade: int, provider: str = "openai") -> str:
@@ -961,6 +1141,8 @@ def main() -> None:
                     st.session_state["relevant_sources"] = ""
                     st.session_state["generated_quiz"] = ""
                     st.session_state["quiz_submitted"] = False
+                    st.session_state["analyzer_result"] = None
+                    st.session_state["quiz_attempt_history"] = []
                     st.rerun()
         else:
             # API mode controls
@@ -1021,6 +1203,8 @@ def main() -> None:
                 st.session_state["relevant_sources"] = ""
                 st.session_state["generated_quiz"] = ""
                 st.session_state["quiz_submitted"] = False
+                st.session_state["analyzer_result"] = None
+                st.session_state["quiz_attempt_history"] = []
                 st.rerun()
 
         st.divider()
@@ -1091,7 +1275,12 @@ def main() -> None:
     with tab_quiz:
         quiz_text = str(st.session_state.get("generated_quiz", "")).strip()
         if quiz_text:
-            _render_interactive_quiz(quiz_text)
+            _render_interactive_quiz(
+                quiz_text,
+                subject=str(st.session_state.get("subject_input", "")).strip(),
+                explanation_text=str(st.session_state.get("generated_explanation", "")).strip(),
+                checker2_result=st.session_state.get("checker2_result"),
+            )
         else:
             st.info("No quiz generated yet. Generate an explanation first to create quiz questions.")
 
@@ -1201,6 +1390,14 @@ def main() -> None:
                         )
         else:
             st.info("No Checker 2 results available. Run image generation to validate frame quality.")
+
+        st.divider()
+        analyzer_result = st.session_state.get("analyzer_result")
+        if analyzer_result and isinstance(analyzer_result, dict) and analyzer_result.get("status") == "ok":
+            st.markdown("**Student Weakness Analyzer**")
+            st.json(analyzer_result)
+        else:
+            st.info("No analyzer results available. Complete and submit a quiz to see diagnostics.")
 
         active_run_dir = st.session_state.get("active_run_dir")
 
