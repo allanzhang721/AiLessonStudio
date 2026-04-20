@@ -48,6 +48,7 @@ from .config import (
     OPENAI_IMAGE_MODEL,
     WANX_IMAGE_MODEL,
 )
+from .frame_checker import checker2_validate_frames
 from .image_pipeline import plan_to_images
 from .planner import question_explanation_grade_to_plan
 from .utils import ensure_dir, make_gif, save_json, save_text
@@ -79,6 +80,9 @@ def run_pipeline(
     run_checker: bool = True,
     checker_max_rounds: int = 3,
     checker_confidence_threshold: float = 0.5,
+    run_checker2: bool = True,
+    checker2_threshold: float = 0.58,
+    checker2_backend: str = "heuristic",
     text_provider: str = "openai",
     image_provider: str = "openai",
 ) -> dict:
@@ -148,6 +152,27 @@ def run_pipeline(
     frames = plan_to_images(plan=plan, out_dir=out_dir, client=image_client, image_model=image_model)
     stage_times["images_seconds"] = round(time.time() - t_images, 3)
 
+    checker2_result = None
+    if run_checker2:
+        t_checker2 = time.time()
+        try:
+            checker2_result = checker2_validate_frames(
+                frames,
+                threshold=checker2_threshold,
+                backend=checker2_backend,
+            )
+        except Exception as exc:
+            checker2_result = {
+                "error": str(exc),
+                "pass": False,
+                "overall_score": 0.0,
+                "threshold": checker2_threshold,
+                "mode": checker2_backend,
+                "failed_steps": [],
+                "per_frame": [],
+            }
+        stage_times["checker2_seconds"] = round(time.time() - t_checker2, 3)
+
     t_gif = time.time()
     gif_path = make_gif(frames, out_dir / "storyboard.gif", fps=1.0)
     stage_times["gif_seconds"] = round(time.time() - t_gif, 3)
@@ -171,6 +196,7 @@ def run_pipeline(
         "text_provider": text_provider,
         "image_provider": image_provider,
         "checker_result": checker_result,
+        "checker2_result": checker2_result,
         "planner_meta": plan.get("planner_meta", {}),
         "render_meta": plan.get("render_meta", {}),
         "stage_times": stage_times,
@@ -198,6 +224,7 @@ def run_pipeline(
         "text_provider": text_provider,
         "image_provider": image_provider,
         "checker_result": checker_result,
+        "checker2_result": checker2_result,
         "manifest_path": out_dir / "run_manifest.json",
         "stage_times": stage_times,
         "total_seconds": total_seconds,

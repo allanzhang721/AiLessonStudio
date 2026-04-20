@@ -1,0 +1,556 @@
+{
+  "document_type": "project_knowledge_pack",
+  "intended_use": "Feed into ChatGPT as full project context for writing, analysis, implementation support, debugging, and paper drafting",
+  "project": {
+    "name": "VisualLesson AI",
+    "workspace_root": "/Users/allanzhang/Desktop/AiLessonStudio",
+    "project_nature": [
+      "research",
+      "industrial_prototype"
+    ],
+    "one_sentence_summary": "Transforms classroom questions into explanation, storyboard plan, educational frames, and narrated videos with checker-gated quality control.",
+    "key_value_proposition": [
+      "End-to-end educational content generation from a single question",
+      "Quality-gated pipeline using Checker 1 (text) and Checker 2 (frames)",
+      "Deployable Streamlit app with downloadable artifacts",
+      "Multi-provider backend support for text and image generation"
+    ],
+    "last_known_date": "2026-04-19"
+  },
+  "goals_and_motivation": {
+    "problem_statement": "Teachers and students need fast, classroom-ready visual explanations, but raw LLM/image generation can be pedagogically inconsistent and visually unreliable.",
+    "design_goals": [
+      "Generate grade-appropriate explanations",
+      "Convert explanations into a constrained 7-step visual lesson",
+      "Render coherent frame progression suitable for narration",
+      "Provide quality control before final output delivery",
+      "Support practical product workflows (UI, artifacts, downloads, demo mode)"
+    ],
+    "non_goals": [
+      "Perfect factual verification against external knowledge bases",
+      "Full autonomous grading of student answers",
+      "Domain-universal guarantees without human review"
+    ]
+  },
+  "high_level_architecture": {
+    "pipeline_paths": [
+      {
+        "name": "Storyboard Path",
+        "flow": [
+          "Question + Subject + Grade",
+          "Explanation Generation",
+          "Checker 1 (DistilBERT quality gate)",
+          "Plan Generation (7-step JSON)",
+          "Frame Generation/Edit",
+          "Checker 2 (frame quality gate)",
+          "GIF + MP4 assembly"
+        ]
+      },
+      {
+        "name": "Single API Video Path",
+        "flow": [
+          "Reuse storyboard run artifacts",
+          "Generate continuous single-video clip (provider-dependent)",
+          "Caption/voiceover post-processing"
+        ]
+      }
+    ],
+    "system_principles": [
+      "Generation and validation are separated",
+      "Intermediate artifacts are explicit and persisted",
+      "Failures should be observable via manifests",
+      "Provider abstraction decouples orchestration from vendor specifics"
+    ]
+  },
+  "repository_map": {
+    "entrypoints": [
+      {
+        "path": "streamlit_app.py",
+        "role": "Web UI and user workflow orchestration"
+      },
+      {
+        "path": "pipeline/pipeline.py",
+        "role": "Core end-to-end storyboard orchestrator"
+      },
+      {
+        "path": "single_api_video.py",
+        "role": "Single API video generation and post-processing"
+      },
+      {
+        "path": "run_demo.py",
+        "role": "CLI demo runner"
+      }
+    ],
+    "core_modules": [
+      {
+        "path": "pipeline/checker.py",
+        "role": "Checker 1: DistilBERT error-type classifier and repair loop"
+      },
+      {
+        "path": "pipeline/frame_checker.py",
+        "role": "Checker 2: frame quality validator (heuristic now, trainable interface)"
+      },
+      {
+        "path": "pipeline/planner.py",
+        "role": "Question/explanation to 7-step plan"
+      },
+      {
+        "path": "pipeline/image_pipeline.py",
+        "role": "Plan to 7 frame images"
+      },
+      {
+        "path": "pipeline/video_pipeline.py",
+        "role": "Frames plus audio to final video"
+      },
+      {
+        "path": "pipeline/validation.py",
+        "role": "Schema, specificity, and relevance validation gates"
+      },
+      {
+        "path": "pipeline/clients.py",
+        "role": "Provider client factory and text chat helper"
+      },
+      {
+        "path": "pipeline/config.py",
+        "role": "Global constants, model IDs, dimensions, defaults"
+      },
+      {
+        "path": "pipeline/utils.py",
+        "role": "Common helpers (I/O, captions, overlays, media)"
+      }
+    ],
+    "tests": [
+      "tests/test_validation.py",
+      "tests/test_render_failfast.py",
+      "tests/test_frame_checker.py"
+    ],
+    "data_and_models": [
+      "checker1/data/*",
+      "checker1/model/distilbert_error_type_ckpt/checkpoint-360/*",
+      "checker1/notebooks/*"
+    ]
+  },
+  "runtime_and_dependencies": {
+    "python": {
+      "known_env": "conda research",
+      "known_version": "3.12.13"
+    },
+    "requirements": [
+      "openai>=1.0.0",
+      "Pillow>=10.0.0",
+      "imageio>=2.34.0",
+      "imageio-ffmpeg>=0.5.1",
+      "streamlit>=1.38.0",
+      "torch>=2.0.0",
+      "transformers>=4.30.0",
+      "safetensors>=0.4.0"
+    ],
+    "external_tools": [
+      "ffmpeg (needed for audio mux in video pipeline)"
+    ]
+  },
+  "providers_and_models": {
+    "text": {
+      "openai": {
+        "model": "gpt-4o",
+        "key": "OPENAI_API_KEY"
+      },
+      "deepseek": {
+        "model": "deepseek-chat",
+        "key": "DEEPSEEK_API_KEY",
+        "base_url": "https://api.deepseek.com"
+      }
+    },
+    "image": {
+      "openai": {
+        "model": "gpt-image-1",
+        "key": "OPENAI_API_KEY"
+      },
+      "wanx": {
+        "model": "wanx-v1",
+        "key": "DASHSCOPE_API_KEY",
+        "base_url": "https://dashscope.aliyuncs.com/api/v1"
+      }
+    },
+    "video": {
+      "sora": {
+        "model": "sora-2",
+        "key": "OPENAI_API_KEY"
+      },
+      "wanx": {
+        "model": "wanx-v1",
+        "key": "DASHSCOPE_API_KEY"
+      }
+    },
+    "tts": {
+      "openai": {
+        "model": "gpt-4o-mini-tts",
+        "voice": "alloy",
+        "key": "OPENAI_API_KEY"
+      }
+    }
+  },
+  "configuration_constants": {
+    "canvas": {
+      "width": 1536,
+      "height": 1024,
+      "min_bottom_band": 320,
+      "notes": "Bottom caption region reserved; core diagram should stay above caption band"
+    },
+    "pipeline_defaults": {
+      "default_steps": 7,
+      "default_output_root": "l15_output"
+    },
+    "checker1": {
+      "checkpoint_dir": "checker1/model/distilbert_error_type_ckpt/checkpoint-360",
+      "max_len": 256,
+      "labels": [
+        "ConceptError",
+        "GradeMismatch",
+        "LogicalGap",
+        "MisleadingAnalogy",
+        "MissingCondition"
+      ]
+    },
+    "checker2": {
+      "default_backend": "heuristic",
+      "default_threshold": 0.58,
+      "supported_backends": [
+        "heuristic",
+        "trained"
+      ]
+    }
+  },
+  "input_output_contracts": {
+    "primary_input": {
+      "question": "string",
+      "subject": "string",
+      "grade": "int (typically 7-12)",
+      "language": "string",
+      "text_provider": "openai|deepseek",
+      "image_provider": "openai|wanx"
+    },
+    "plan_schema": {
+      "required_top_keys": [
+        "question_id",
+        "question_text",
+        "canonical_answer",
+        "visual_family",
+        "render_mode",
+        "scene_bible",
+        "steps",
+        "captions",
+        "math_elements"
+      ],
+      "step_count": 7,
+      "step_fields": [
+        "step_id",
+        "goal",
+        "delta",
+        "forbidden",
+        "keep",
+        "add"
+      ],
+      "caption_count": 7
+    },
+    "pipeline_return_shape": {
+      "plan": "dict",
+      "out_dir": "path",
+      "frames": "list[path]",
+      "gif_path": "path",
+      "video_path": "path",
+      "voiceover_path": "path|null",
+      "used_openai": "bool",
+      "text_provider": "string",
+      "image_provider": "string",
+      "checker_result": "dict|null",
+      "checker2_result": "dict|null",
+      "manifest_path": "path",
+      "stage_times": "dict",
+      "total_seconds": "float"
+    }
+  },
+  "stage_details": {
+    "stage_0_checker1": {
+      "module": "pipeline/checker.py",
+      "purpose": "Classify explanation error type and optionally repair via LLM loop",
+      "model_type": "DistilBERT sequence classifier (5-class)",
+      "input_format": "Subject line optional + Grade + Question + Explanation",
+      "decision_rule": {
+        "confidence_threshold": 0.5,
+        "logic": "if confidence >= threshold then revise via GPT and re-check; else accept",
+        "max_rounds": 3
+      },
+      "output_fields": [
+        "final_explanation",
+        "rounds",
+        "was_revised",
+        "total_rounds"
+      ]
+    },
+    "stage_A_planner": {
+      "module": "pipeline/planner.py",
+      "purpose": "Generate structured 7-step educational storyboard plan",
+      "strategy": [
+        "Try LLM-generated plan",
+        "Normalize and validate schema",
+        "Apply specificity and relevance gates",
+        "Issue refinement prompts when needed",
+        "Fallback to deterministic template if necessary"
+      ],
+      "quality_gates": {
+        "specificity_threshold": 0.62,
+        "relevance_threshold": 0.45,
+        "hard_checks": [
+          "schema validity",
+          "step/caption count",
+          "arrow direction ambiguity checks (optional hard enforcement)"
+        ]
+      }
+    },
+    "stage_B_images": {
+      "module": "pipeline/image_pipeline.py",
+      "purpose": "Render 7 frames from plan with continuity",
+      "step_logic": {
+        "step_1": "images.generate",
+        "steps_2_7": "images.edit on previous raw frame"
+      },
+      "post_processing": [
+        "overlay math elements",
+        "append caption band",
+        "save raw and final versions"
+      ],
+      "retry_policy": "Up to 3 attempts with backoff for image API calls"
+    },
+    "stage_B2_checker2": {
+      "module": "pipeline/frame_checker.py",
+      "purpose": "Validate quality of rendered frames before final media assembly",
+      "current_backend": "heuristic",
+      "heuristic_metrics": [
+        "resolution",
+        "exposure balance (gray mean)",
+        "contrast (gray std)",
+        "edge detail proxy (edge std)",
+        "caption-band readability (caption band std)"
+      ],
+      "scoring": {
+        "formula": "weighted score over 5 subscores",
+        "weights": {
+          "resolution": 0.2,
+          "exposure": 0.2,
+          "contrast": 0.25,
+          "edge_detail": 0.25,
+          "caption_readability": 0.1
+        },
+        "overall_pass_condition": "avg score >= threshold and no failed steps"
+      },
+      "issue_tags": [
+        "low_resolution",
+        "poor_exposure",
+        "low_contrast",
+        "blurry_or_low_detail",
+        "caption_band_low_readability"
+      ],
+      "trained_backend_status": "interface exists as placeholder; not implemented yet",
+      "trained_extension_function": "_validate_with_trained_model"
+    },
+    "stage_C_video": {
+      "module": "pipeline/video_pipeline.py",
+      "purpose": "Build GIF/MP4 with optional voiceover",
+      "flow": [
+        "make GIF",
+        "build narration script from captions",
+        "synthesize TTS when available",
+        "assemble MP4 from frames",
+        "mux audio if present"
+      ],
+      "fps_behavior": "1.0 default; dynamic estimate when voiceover exists"
+    }
+  },
+  "checker2_implementation_notes": {
+    "why_added": "Project needed a second checker to validate frame quality beyond text quality",
+    "where_integrated": [
+      "pipeline/pipeline.py: run_pipeline now executes checker2_validate_frames",
+      "pipeline/__init__.py: exports checker2_validate_frames",
+      "streamlit_app.py: stores checker2_result and renders it in Details tab",
+      "run_manifest.json: now includes checker2_result"
+    ],
+    "new_run_pipeline_args": [
+      {
+        "name": "run_checker2",
+        "type": "bool",
+        "default": true
+      },
+      {
+        "name": "checker2_threshold",
+        "type": "float",
+        "default": 0.58
+      },
+      {
+        "name": "checker2_backend",
+        "type": "string",
+        "default": "heuristic"
+      }
+    ],
+    "stage_time_metric": "checker2_seconds",
+    "ui_behavior": {
+      "during_generation": "status line shows checker2 score/threshold or error",
+      "details_tab": "shows overall pass/fail + per-step score/issues"
+    }
+  },
+  "streamlit_app_behavior": {
+    "modes": [
+      "API mode",
+      "Demo mode (no API)"
+    ],
+    "tabs": [
+      "Lesson",
+      "Quiz",
+      "Resources",
+      "Details"
+    ],
+    "lesson_tab": "Step 1 explanation panel; Step 2 frames and videos after generation",
+    "quiz_tab": "Interactive MCQ parser and scorer",
+    "resources_tab": "Suggested sources + download buttons",
+    "details_tab": [
+      "Checker 1 per-round diagnostics",
+      "Checker 2 overall and per-frame diagnostics"
+    ],
+    "key_state_fields": [
+      "question_input",
+      "subject_input",
+      "grade_input",
+      "language",
+      "text_provider",
+      "image_provider",
+      "generated_explanation",
+      "checker_result",
+      "checker2_result",
+      "generated_quiz",
+      "relevant_sources",
+      "active_run_dir"
+    ]
+  },
+  "artifacts_and_persistence": {
+    "run_directory_pattern": "output/<question_id>/",
+    "standard_artifacts": [
+      "plan.json",
+      "run_manifest.json",
+      "storyboard.gif",
+      "storyboard.mp4",
+      "voiceover_script.txt",
+      "voiceover_clean.mp3 (optional)",
+      "frames/step_01.png ... step_07.png",
+      "frames_raw/step_01.png ... step_07.png",
+      "prompts/*.txt",
+      "sources.md",
+      "quiz.md"
+    ],
+    "single_api_video_subdir": "single_api_video/",
+    "manifest_contains": [
+      "providers used",
+      "checker_result",
+      "checker2_result",
+      "stage_times",
+      "artifact paths",
+      "total runtime"
+    ]
+  },
+  "quality_and_validation": {
+    "schema_validation": {
+      "module": "pipeline/validation.py",
+      "enforces": [
+        "top-level plan keys",
+        "step schema and sequence",
+        "caption completeness",
+        "math element coordinate consistency"
+      ]
+    },
+    "specificity_gate": {
+      "target": "renderability and concrete instructions",
+      "checks": [
+        "instruction length",
+        "positional constraints",
+        "visual attributes",
+        "arrow direction semantics",
+        "one-new-element discipline",
+        "vague phrase penalties"
+      ]
+    },
+    "relevance_gate": {
+      "target": "topic adherence",
+      "checks": [
+        "keyword overlap with question/explanation",
+        "off-topic leakage (including coding-term leakage when not applicable)"
+      ]
+    }
+  },
+  "testing_status": {
+    "known_tests": [
+      {
+        "file": "tests/test_validation.py",
+        "focus": "schema and gate behavior"
+      },
+      {
+        "file": "tests/test_render_failfast.py",
+        "focus": "invalid plan fail-fast behavior"
+      },
+      {
+        "file": "tests/test_frame_checker.py",
+        "focus": "checker2 empty input and frame scoring"
+      }
+    ],
+    "last_known_run": {
+      "command": "/opt/anaconda3/envs/research/bin/python -m unittest tests/test_frame_checker.py",
+      "result": "OK (2 tests passed)"
+    }
+  },
+  "implementation_guidance_for_future_chatgpt_prompts": {
+    "when_asking_for_code_changes": [
+      "Preserve checker-gated architecture",
+      "Keep plan schema compatibility",
+      "Keep run_manifest backward-compatible where possible",
+      "Prefer additive changes over breaking refactors"
+    ],
+    "when_asking_for_research_writing": [
+      "Frame contributions as research + industrial hybrid",
+      "Highlight validation gates as core novelty",
+      "Discuss limitations (heuristic checker2, API dependency, threshold tuning)",
+      "Include theoretical and broad impact analysis"
+    ],
+    "when_asking_for_ml_extensions": [
+      "Implement trained Checker 2 in _validate_with_trained_model",
+      "Preserve checker2 result schema",
+      "Add calibration and confidence reporting",
+      "Add regression tests for pass/fail consistency"
+    ],
+    "when_asking_for_eval_design": [
+      "Include ablations: no checker vs checker1 vs checker1+checker2",
+      "Use both automatic metrics and human rubric",
+      "Report runtime/cost overhead alongside quality gains"
+    ]
+  },
+  "known_limitations": [
+    "Checker 2 trained backend is not implemented yet",
+    "Heuristic frame scoring is proxy-based, not semantic ground truth",
+    "Pipeline quality depends on provider model behavior and API stability",
+    "Educational factual verification is not fully externalized"
+  ],
+  "future_work_roadmap": [
+    "Replace heuristic checker2 with self-trained model",
+    "Add active-learning loop from user quality feedback",
+    "Increase benchmark diversity across subjects/grades/languages",
+    "Strengthen factual grounding and citation support",
+    "Add robust monitoring dashboards for production"
+  ],
+  "ready_to_paste_prompt_block": {
+    "title": "How to use this JSON with ChatGPT",
+    "instructions": [
+      "Paste this entire JSON first",
+      "Then ask ChatGPT to act as a project-aware assistant",
+      "Specify task type: coding, paper writing, evaluation, debugging, or roadmap planning",
+      "Ask for outputs that strictly preserve existing interfaces unless you allow breaking changes"
+    ],
+    "example_prompt": "Use the attached project JSON as source of truth. Propose a trained Checker 2 architecture, training data schema, evaluation plan, and exact code integration steps compatible with current run_pipeline and streamlit details tab outputs."
+  }
+}

@@ -425,7 +425,7 @@ Optional (persistent): add to your shell profile (`~/.zshrc`), then restart term
 Always run Streamlit from the local env:
 
 ```bash
-cd /path/to/L15
+cd /path/to/AiLessonStudio
 . .venv/bin/activate
 streamlit run streamlit_app.py
 ```
@@ -490,7 +490,7 @@ Cause: running app in wrong Python environment.
 Fix:
 
 ```bash
-cd /path/to/L15
+cd /path/to/AiLessonStudio
 . .venv/bin/activate
 pip install -r requirements.txt
 python -c "import openai; print(openai.__version__)"

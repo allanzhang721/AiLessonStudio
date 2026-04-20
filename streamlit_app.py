@@ -207,6 +207,7 @@ def _ensure_state_defaults() -> None:
         "active_run_dir": None,
         "saved_demo_choice": None,
         "checker_result": None,
+        "checker2_result": None,
         "relevant_sources": "",
         "generated_quiz": "",
         "language": "English",
@@ -761,6 +762,18 @@ def _run_generation(*, run_openai: bool, make_single_video: bool) -> None:
                     status.write(f"Checker accepted explanation (confidence {last.get('confidence', 0):.2f}).")
                 st.session_state["checker_result"] = checker_result
 
+            checker2_result = pipeline_result.get("checker2_result")
+            if checker2_result and isinstance(checker2_result, dict):
+                st.session_state["checker2_result"] = checker2_result
+                if checker2_result.get("error"):
+                    status.write(f"Checker 2 failed: {checker2_result['error']}")
+                else:
+                    status.write(
+                        "Checker 2 frame quality "
+                        f"score {checker2_result.get('overall_score', 0):.3f} "
+                        f"(threshold {checker2_result.get('threshold', 0):.2f})."
+                    )
+
             status.write("Generating storyboard plan, frames, GIF, and storyboard video...")
             run_dir = Path(pipeline_result["out_dir"])
             st.session_state["active_run_dir"] = str(run_dir)
@@ -838,6 +851,18 @@ def _run_full_lesson() -> None:
                     last = rounds[-1].get("checker_result", {})
                     status.write(f"Checker accepted (confidence {last.get('confidence', 0):.2f}).")
                 st.session_state["checker_result"] = checker_result
+
+            checker2_result = pipeline_result.get("checker2_result")
+            if checker2_result and isinstance(checker2_result, dict):
+                st.session_state["checker2_result"] = checker2_result
+                if checker2_result.get("error"):
+                    status.write(f"Checker 2 failed: {checker2_result['error']}")
+                else:
+                    status.write(
+                        "Checker 2 frame quality "
+                        f"score {checker2_result.get('overall_score', 0):.3f} "
+                        f"(threshold {checker2_result.get('threshold', 0):.2f})."
+                    )
 
             status.write("Step 4/5 — Plan + frames + GIF generated.")
             run_dir = Path(pipeline_result["out_dir"])
@@ -932,6 +957,7 @@ def main() -> None:
                     st.session_state["generated_explanation"] = ""
                     st.session_state["explanation_signature"] = ""
                     st.session_state["checker_result"] = None
+                    st.session_state["checker2_result"] = None
                     st.session_state["relevant_sources"] = ""
                     st.session_state["generated_quiz"] = ""
                     st.session_state["quiz_submitted"] = False
@@ -991,6 +1017,7 @@ def main() -> None:
                 st.session_state["generated_explanation"] = ""
                 st.session_state["explanation_signature"] = ""
                 st.session_state["checker_result"] = None
+                st.session_state["checker2_result"] = None
                 st.session_state["relevant_sources"] = ""
                 st.session_state["generated_quiz"] = ""
                 st.session_state["quiz_submitted"] = False
@@ -1140,6 +1167,40 @@ def main() -> None:
                     st.json(cr["probabilities"])
         else:
             st.info("No checker results available. Run the pipeline to see error-type classification.")
+
+        st.divider()
+        checker2_result = st.session_state.get("checker2_result")
+        if checker2_result and isinstance(checker2_result, dict):
+            st.markdown("**Checker 2 Results (Frame Quality Validator)**")
+            if checker2_result.get("error"):
+                st.error(f"Checker 2 error: {checker2_result['error']}")
+            else:
+                passed = bool(checker2_result.get("pass", False))
+                score = float(checker2_result.get("overall_score", 0.0))
+                threshold = float(checker2_result.get("threshold", 0.0))
+                mode = str(checker2_result.get("mode", "heuristic"))
+                if passed:
+                    st.success(f"Checker 2 passed (mode={mode}, score={score:.3f}, threshold={threshold:.2f}).")
+                else:
+                    failed_steps = checker2_result.get("failed_steps", [])
+                    st.warning(
+                        f"Checker 2 flagged frame quality (mode={mode}, score={score:.3f}, "
+                        f"threshold={threshold:.2f}, failed steps={failed_steps})."
+                    )
+
+                per_frame = checker2_result.get("per_frame", [])
+                if isinstance(per_frame, list) and per_frame:
+                    for item in per_frame:
+                        sid = item.get("step_id", "?")
+                        item_score = float(item.get("score", 0.0))
+                        item_pass = bool(item.get("pass", False))
+                        issues = item.get("issues", [])
+                        st.markdown(
+                            f"**Step {sid}**: {'PASS' if item_pass else 'FAIL'} "
+                            f"(score {item_score:.3f}) | issues: {issues or 'none'}"
+                        )
+        else:
+            st.info("No Checker 2 results available. Run image generation to validate frame quality.")
 
         active_run_dir = st.session_state.get("active_run_dir")
 
