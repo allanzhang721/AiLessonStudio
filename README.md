@@ -2,7 +2,7 @@
 
 **Turn any classroom question into a visual lesson — explanation, storyboard frames, narrated video, quiz, and sources — in one click.**
 
-Built by **Jiaxing BCOS**
+Built by **Meiyu Shen, Yifan Yan, Jiachen Yu (Jiaxing BCOS)**
 
 ---
 
@@ -16,8 +16,6 @@ This repository now includes an ICML-style organization layer that keeps researc
 - `scripts/icml/run_smoke.sh` — quick smoke validation for Checker 1/2
 - `scripts/icml/reproduce_core_results.sh` — core comparison reproduction
 - `scripts/analysis/` — analysis utilities (for example paper plot generation)
-- `docs/ICML_REPO_STANDARD.md` — structure and contribution conventions
-- `docs/ICML_ARTIFACT_CHECKLIST.md` — pre-submission artifact checklist
 - `papers/` — manuscript sources (`.tex`, `.bib`)
 - `logs/` — experiment and smoke logs
 - `notebooks/` — root-level research notebooks
@@ -99,46 +97,7 @@ AiLessonStudio/
 ---
 
 ## Pipeline Overview
-
-```
-Question + Subject + Grade
-          │
-          ▼
-   LLM generates Explanation
-   (+ Sources + Quiz in same call)
-          │
-          ▼
-  ┌───────────────────────────────┐
-  │  Checker 1 (DistilBERT)       │
-  │  5 error types:               │
-  │  ConceptError · GradeMismatch │
-  │  LogicalGap · MisleadingAnalogy│
-  │  MissingCondition             │
-  └──────────┬────────────────────┘
-             │ confidence ≥ 0.5?
-      No ────┤──── Yes
-      │      │       │
-      │      │    GPT repairs explanation
-      │      │       │
-      └──────┴───────┘
-         (up to 3 rounds)
-                │
-                ▼
-       Planner → 7-step JSON plan
-                │
-                ▼
-       Image pipeline → 7 PNG frames
-       (generate step 1, edit steps 2–7)
-                │
-                ▼
-       Video pipeline → GIF + MP4
-                │
-                ▼  (optional)
-       Sora single-video → 12 s narrated clip
-                │
-                ▼
-       Quiz submission → Student Weakness Analyzer
-```
+![Architecture](paper_figures/architecture.png)
 
 ---
 

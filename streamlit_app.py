@@ -52,7 +52,7 @@ from pipeline.student_analyzer import analyze_student_weakness, infer_concept_ta
 from pipeline.clients import build_text_client, chat_completion
 from pipeline.api_keys import available_text_providers, available_image_providers, available_video_providers
 from pipeline.pipeline import run_pipeline
-from single_api_video import generate_single_video_from_run_dir
+from pipeline.single_api_video import generate_single_video_from_run_dir
 
 
 APP_ROOT = Path(__file__).resolve().parent
