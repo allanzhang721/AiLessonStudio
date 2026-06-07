@@ -21,6 +21,20 @@ checker1/*
 !checker1/model/**
 checker1/model/**/.DS_Store
 
+# Checker 2
+checker2/*
+
 # Generated media and render outputs
 output/
+
+#Others
+papers/
+
+
+
+# Local run logs
+logs/
+
+# Local context snapshots
+docs/context/
 

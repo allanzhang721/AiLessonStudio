@@ -6,6 +6,50 @@ Built by **Jiaxing BCOS**
 
 ---
 
+## ICML-Clean Repository Layer
+
+This repository now includes an ICML-style organization layer that keeps research runs reproducible and easy to audit, while preserving your existing working code.
+
+### Added standardization paths
+
+- `configs/icml/default.yaml` — canonical run settings
+- `scripts/icml/run_smoke.sh` — quick smoke validation for Checker 1/2
+- `scripts/icml/reproduce_core_results.sh` — core comparison reproduction
+- `scripts/analysis/` — analysis utilities (for example paper plot generation)
+- `docs/ICML_REPO_STANDARD.md` — structure and contribution conventions
+- `docs/ICML_ARTIFACT_CHECKLIST.md` — pre-submission artifact checklist
+- `papers/` — manuscript sources (`.tex`, `.bib`)
+- `logs/` — experiment and smoke logs
+- `notebooks/` — root-level research notebooks
+- `Makefile` — one-command install/test/run/reproduce tasks
+- `pyproject.toml` — Python project metadata + test/format config
+
+### ICML quickstart commands
+
+```bash
+make install
+make test
+make smoke
+make reproduce
+```
+
+### Clean logical layout to follow
+
+```
+AiLessonStudio/
+├── pipeline/            # Core pipeline implementation
+├── checker1/            # Text explanation quality research
+├── checker2/            # Visual frame quality research
+├── tests/               # Automated tests
+├── configs/icml/        # Canonical reproducible configs
+├── scripts/icml/        # Reproduction and smoke scripts
+├── docs/                # Technical + artifact documentation
+├── paper_figures/       # Publication figures
+└── output/              # Generated artifacts (ignored by git)
+```
+
+---
+
 ## What it does
 
 | Feature | Description |
@@ -28,33 +72,28 @@ Built by **Jiaxing BCOS**
 ## Project Structure
 
 ```
-L15/
-├── streamlit_app.py          # Streamlit web app (sidebar + 4-tab layout)
-├── single_api_video.py       # Sora single-video generation + caption + voiceover
+AiLessonStudio/
+├── streamlit_app.py          # Streamlit web app entry point
 ├── run_demo.py               # CLI demo runner
-├── requirements.txt          # Python dependencies
-├── api_keys.txt              # API keys (one key=value per line, not committed)
-├── PIPELINE.md               # Full pipeline technical reference
-│
-├── pipeline/
-│   ├── pipeline.py           # End-to-end storyboard orchestrator
-│   ├── checker.py            # Checker 1 — DistilBERT + GPT repair loop
-│   ├── planner.py            # Stage A — question + explanation → 7-step plan
-│   ├── image_pipeline.py     # Stage B — plan → 7 PNG frames
-│   ├── video_pipeline.py     # Stage C — frames + audio → GIF + MP4
-│   ├── clients.py            # Provider client factory (OpenAI, DeepSeek, Wanx)
-│   ├── api_keys.py           # Key loader from api_keys.txt
-│   ├── config.py             # Model names and global constants
-│   ├── prompts.py            # Prompt builders
-│   ├── student_analyzer.py   # Student weakness scoring + remediation suggestions
-│   ├── validation.py         # Specificity + relevance scoring gates
-│   └── utils.py              # Shared utilities
-│
-├── checker1_distilbert_error_type_ckpt/
-│   └── checkpoint-360/       # Best DistilBERT checkpoint (macro-F1 = 0.90)
-│
-└── output/
-    └── good_ecology_foodweb_species_removal_cascade/   # Curated demo run
+├── single_api_video.py       # Single-video generation utility
+├── requirements.txt
+├── pyproject.toml
+├── Makefile
+├── README.md
+├── PIPELINE.md
+├── pipeline/                 # Core pipeline package
+├── checker1/                 # Checker 1 research module + data + experiments
+├── checker2/                 # Checker 2 research module + data + experiments
+├── tests/                    # Automated tests
+├── configs/icml/             # Canonical reproducible ICML configs
+├── scripts/icml/             # Reproduction/smoke scripts
+├── scripts/analysis/         # Analysis helpers (plots, aggregation)
+├── docs/                     # Documentation and standards
+├── papers/                   # LaTeX manuscript sources
+├── paper_figures/            # Final paper figures
+├── notebooks/                # Exploratory notebooks
+├── logs/                     # Local logs (non-source artifacts)
+└── output/                   # Generated media and pipeline outputs
 ```
 
 ---
@@ -162,6 +201,45 @@ python -m streamlit run streamlit_app.py
 ```
 
 Open **http://localhost:8501** in your browser.
+
+### Run Checker 2 Research Comparison
+
+To compare the Flickr8k-based Checker 2 CLIP variants on a smaller subset:
+
+```bash
+cd /path/to/AiLessonStudio
+conda activate research          # or: source .venv/bin/activate
+python -m checker2.compare_variants \
+        --dataset-dir checker2/Flickr8k \
+        --output-dir checker2/experiments/clip_variant_comparison \
+        --max-images 1200
+```
+
+For a faster smoke test, reduce the subset size:
+
+```bash
+python -m checker2.compare_variants --max-images 600
+```
+
+### Run Checker 1 Research Comparison
+
+To compare text-model variants for the Checker 1 pedagogical error classifier:
+
+```bash
+cd /path/to/AiLessonStudio
+conda activate research          # or: source .venv/bin/activate
+python -m checker1.compare_variants \
+        --data-file checker1/data/L10_data_labelled.csv \
+        --output-dir checker1/experiments/variant_comparison \
+        --max-samples 2500 \
+        --epochs 3
+```
+
+For a faster smoke test:
+
+```bash
+python -m checker1.compare_variants --max-samples 800 --epochs 1
+```
 
 ---
 
@@ -557,4 +635,23 @@ pip install --upgrade pip
 pip install -r requirements.txt
 export OPENAI_API_KEY="your_api_key_here"
 python -m streamlit run streamlit_app.py
+```
+
+Checker 2 research comparison:
+
+```bash
+python -m checker2.compare_variants \
+        --dataset-dir checker2/Flickr8k \
+        --output-dir checker2/experiments/clip_variant_comparison \
+        --max-images 1200
+```
+
+Checker 1 research comparison:
+
+```bash
+python -m checker1.compare_variants \
+        --data-file checker1/data/L10_data_labelled.csv \
+        --output-dir checker1/experiments/variant_comparison \
+        --max-samples 2500 \
+        --epochs 3
 ```
