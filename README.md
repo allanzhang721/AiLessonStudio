@@ -154,53 +154,12 @@ Quotes are stripped automatically. Environment variables (`OPENAI_API_KEY`, etc.
 ## Run the App
 
 ```bash
-cd /path/to/AiLessonStudio
-conda activate research          # or: source .venv/bin/activate
 python -m streamlit run streamlit_app.py
 ```
 
 Open **http://localhost:8501** in your browser.
 
-### Run Checker 2 Research Comparison
 
-To compare the Flickr8k-based Checker 2 CLIP variants on a smaller subset:
-
-```bash
-cd /path/to/AiLessonStudio
-conda activate research          # or: source .venv/bin/activate
-python -m checker2.compare_variants \
-        --dataset-dir checker2/Flickr8k \
-        --output-dir checker2/experiments/clip_variant_comparison \
-        --max-images 1200
-```
-
-For a faster smoke test, reduce the subset size:
-
-```bash
-python -m checker2.compare_variants --max-images 600
-```
-
-### Run Checker 1 Research Comparison
-
-To compare text-model variants for the Checker 1 pedagogical error classifier:
-
-```bash
-cd /path/to/AiLessonStudio
-conda activate research          # or: source .venv/bin/activate
-python -m checker1.compare_variants \
-        --data-file checker1/data/L10_data_labelled.csv \
-        --output-dir checker1/experiments/variant_comparison \
-        --max-samples 2500 \
-        --epochs 3
-```
-
-For a faster smoke test:
-
-```bash
-python -m checker1.compare_variants --max-samples 800 --epochs 1
-```
-
----
 
 ## How to Use
 
@@ -222,7 +181,7 @@ python -m checker1.compare_variants --max-samples 800 --epochs 1
 3. Click **Load Demo** → explanation, frames, video, quiz, and sources are loaded from disk
 4. Browse all 4 tabs
 
----
+
 
 ## App Layout
 
@@ -233,10 +192,10 @@ Mode toggle · Question input · Settings (subject, grade, language, providers) 
 
 | Tab | Content |
 |-----|---------|
-| 📖 **Lesson** | Step 1: explanation · Step 2: run summary + frames viewer + video player |
-| 📝 **Quiz** | 5 MCQs with confidence sliders, Check Answers, Reset, score, and weakness diagnostics |
-| 📚 **Resources** | Learning sources + download buttons (ZIP, MP4, TXT, MD) |
-| ℹ️ **Details** | Checker 1 rounds, Checker 2 frame quality, and full analyzer JSON |
+| **Lesson** | Step 1: explanation · Step 2: run summary + frames viewer + video player |
+| **Quiz** | 5 MCQs with confidence sliders, Check Answers, Reset, score, and weakness diagnostics |
+| **Resources** | Learning sources + download buttons (ZIP, MP4, TXT, MD) |
+| ℹ**Details** | Checker 1 rounds, Checker 2 frame quality, and full analyzer JSON |
 
 ---
 
@@ -381,44 +340,6 @@ See [PIPELINE.md](PIPELINE.md) for:
 - `single_api_video.py`: single-video API generation + postprocessing helpers.
 - `output/`: generated and saved demo runs.
 
----
-
-## 2. Pipeline Overview
-
-```
-Question + Grade + Subject
-        │
-        ▼
-  GPT generates explanation
-        │
-        ▼
-  ┌─────────────────────────────┐
-  │  Checker 1 (DistilBERT)     │
-  │  Detects error type:        │
-  │  ConceptError, GradeMismatch│
-  │  LogicalGap, MisleadingAnalogy│
-  │  MissingCondition           │
-  └──────────┬──────────────────┘
-             │ confidence ≥ 0.5?
-     ┌───────┴───────┐
-     │ Yes           │ No
-     ▼               ▼
-  GPT repairs     Accept explanation
-  explanation       │
-     │               │
-     └───────┬───────┘
-             ▼
-     (re-check up to 3 rounds)
-             │
-             ▼
-   Planner → 7-step storyboard plan
-             │
-             ▼
-   Image pipeline → 7 PNG frames
-             │
-             ▼
-   Video pipeline → GIF + MP4
-```
 
 ---
 
