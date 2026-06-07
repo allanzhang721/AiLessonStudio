@@ -8,9 +8,6 @@ Built by **Meiyu Shen, Yifan Yan, Jiachen Yu (Jiaxing BCOS)**
 
 ---
 
-## ICML-Clean Repository Layer
-
-This repository now includes an ICML-style organization layer that keeps research runs reproducible and easy to audit, while preserving your existing working code.
 
 ### Added standardization paths
 
@@ -24,7 +21,7 @@ This repository now includes an ICML-style organization layer that keeps researc
 - `Makefile` — one-command install/test/run/reproduce tasks
 - `pyproject.toml` — Python project metadata + test/format config
 
-### ICML quickstart commands
+### Quickstart commands
 
 ```bash
 make install
