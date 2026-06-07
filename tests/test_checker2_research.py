@@ -3,8 +3,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from checker2.dataset import build_pair_examples, load_flickr8k_captions, prepare_flickr8k_subset
-from checker2.metrics import best_threshold, classification_metrics, roc_curve
+from checker2.model.dataset import build_pair_examples, load_flickr8k_captions, prepare_flickr8k_subset
+from checker2.model.metrics import best_threshold, classification_metrics, roc_curve
 
 
 class Checker2ResearchTests(unittest.TestCase):

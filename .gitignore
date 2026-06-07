@@ -23,6 +23,7 @@ checker1/model/**/.DS_Store
 
 # Checker 2
 checker2/*
+!checker1/model/**
 
 # Generated media and render outputs
 output/
