@@ -4,6 +4,8 @@
 
 Built by **Meiyu Shen, Yifan Yan, Jiachen Yu (Jiaxing BCOS)**
 
+![Architecture](paper_figures/architecture.png)
+
 ---
 
 ## ICML-Clean Repository Layer
@@ -94,12 +96,7 @@ AiLessonStudio/
 └── output/                   # Generated media and pipeline outputs
 ```
 
----
 
-## Pipeline Overview
-![Architecture](paper_figures/architecture.png)
-
----
 
 ## Prerequisites
 
