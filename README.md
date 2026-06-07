@@ -299,21 +299,6 @@ python -m streamlit run streamlit_app.py
 
 ---
 
-## Full Technical Reference
-
-See [PIPELINE.md](PIPELINE.md) for:
-- Multi-provider architecture
-- Checker 1 model architecture and inference math
-- Planner prompt contracts
-- Specificity and relevance scoring formulas
-- Sora video pipeline details
-- Failure modes and fallback strategy
-
-
-- API mode: generates explanation → checks quality with Checker 1 → generates storyboard + single API video.
-- Demo mode (no API): loads and plays saved demo outputs from `output/`.
-
----
 
 ## 1. Project Structure
 
