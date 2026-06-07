@@ -106,7 +106,7 @@ AiLessonStudio/
 - macOS or Linux
 - Python 3.11 or 3.12
 - Internet connection for API mode
-- At least one API key (OpenAI or DeepSeek) for API
+- At least one API key (OpenAI or DeepSeek) for API mode
 
 ---
 
