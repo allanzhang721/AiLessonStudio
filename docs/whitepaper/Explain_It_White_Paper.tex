@@ -281,6 +281,7 @@ where $T$ is mean technical quality and $M$ is normalized semantic quality. The 
 
 \begin{figure}[H]
 \centering
+\scalebox{0.82}{%
 \begin{tikzpicture}[
  node distance=5mm and 7mm,
  frame/.style={draw=blue,fill=blue!8,minimum width=10mm,minimum height=8mm,font=\scriptsize},
@@ -305,6 +306,7 @@ where $T$ is mean technical quality and $M$ is normalized semantic quality. The 
 \draw[arr] (final)--node[left,font=\scriptsize]{no}(review);
 \draw[arr] (final)--node[right,font=\scriptsize]{yes}(approved);
 \end{tikzpicture}
+}
 \caption{Gate 2 decision graph. Pixel diagnostics screen rendering failures; the contact sheet addresses meaning and continuity.}
 \label{fig:gate2}
 \end{figure}
