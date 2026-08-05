@@ -8,6 +8,7 @@ import time
 from typing import Any
 
 from .clients import chat_completion
+from .markdown_render import preserve_markdown
 
 
 _WORD = re.compile(r"[A-Za-z][A-Za-z'-]*")
@@ -57,7 +58,7 @@ def review_explanation(
 ) -> dict[str, Any]:
     """Run a cheap local screen, then one compact semantic rubric and repair if needed."""
     total_started = time.perf_counter()
-    current = " ".join(explanation.split())
+    current = preserve_markdown(explanation)
     original = current
     rounds: list[dict[str, Any]] = []
     local_latency = 0.0
@@ -76,7 +77,8 @@ Explanation: {current}
 
 Score 1-4: accuracy, completeness, logical_flow, grade_fit, clarity.
 Pass only when accuracy=4 and every other score>=3. List only concrete issues.
-If failing, return a corrected 120-260 word explanation. Do not add citations.
+If failing, return a corrected 120-260 word explanation. Preserve useful Markdown.
+Format math only as `$...$` or `$$...$$`. Do not add citations.
 JSON only:
 {{"scores": {{"accuracy": 1, "completeness": 1, "logical_flow": 1,
 "grade_fit": 1, "clarity": 1}}, "issues": ["..."], "pass": false,
@@ -93,7 +95,7 @@ JSON only:
             issues = [str(item).strip() for item in review.get("issues", []) if str(item).strip()]
             issues.extend(item for item in local_issues if item not in issues)
             passed = bool(review.get("pass")) and scores["accuracy"] == 4 and min(scores.values()) >= 3 and not local_issues
-            revised = " ".join(str(review.get("revised_explanation", "")).split())
+            revised = preserve_markdown(review.get("revised_explanation", ""))
         except Exception as exc:
             model_ms = _rounded_ms(model_started)
             scores = {"accuracy": 1, "completeness": 2, "logical_flow": 2, "grade_fit": 2, "clarity": 2}

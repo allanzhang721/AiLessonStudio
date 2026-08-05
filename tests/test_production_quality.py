@@ -3,6 +3,7 @@ import unittest
 
 from pipeline.lesson_service import _cited_markdown, curated_resources, normalize_lesson_bundle, research_lesson_sources
 from pipeline.quality_gates import local_explanation_review, review_explanation
+from pipeline.markdown_render import preserve_markdown, streamlit_markdown
 
 
 class FakeResponses:
@@ -44,6 +45,13 @@ class ProductionQualityTests(unittest.TestCase):
             ],
         }
 
+    def test_markdown_and_common_latex_delimiters_are_preserved(self):
+        source = "First paragraph.\n\n- Key idea\n\n\\[F = ma\\] and \\(a = F/m\\)."
+        preserved = preserve_markdown(source)
+        rendered = streamlit_markdown(preserved)
+        self.assertIn("\n\n- Key idea", preserved)
+        self.assertIn("$$\nF = ma\n$$", rendered)
+        self.assertIn("$a = F/m$", rendered)
     def test_bundle_normalization(self):
         result = normalize_lesson_bundle(self._bundle())
         self.assertEqual(len(result["quiz"]), 5)
