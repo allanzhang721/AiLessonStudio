@@ -21,16 +21,16 @@
 \definecolor{ink}{HTML}{172033}
 \definecolor{soft}{HTML}{EAF8F7}
 \definecolor{pale}{HTML}{F4F7FB}
-\hypersetup{colorlinks=true,linkcolor=navy,urlcolor=teal,citecolor=navy}
+\hypersetup{colorlinks=true,linkcolor=navy,urlcolor=teal,citecolor=navy,pdftitle={Explain It! Technical Product White Paper},pdfauthor={Meiyu Shen, Yifan Yan, and Jiachen Yu},pdfsubject={A checked visual lesson pipeline for high-school students}}
 \setlength{\headheight}{14pt}
 \pagestyle{fancy}
 \fancyhf{}
-\lhead{VisualLesson AI White Paper}
+\lhead{Explain It! White Paper}
 \rhead{August 2026}
 \cfoot{\thepage}
 \setlist{nosep,leftmargin=*}
 \renewcommand{\arraystretch}{1.18}
-\newcommand{\product}{VisualLesson AI}
+\newcommand{\product}{Explain It!}
 \newcommand{\code}[1]{\texttt{#1}}
 \newcommand{\ind}[1]{\mathbf{1}\!\left[#1\right]}
 \newcommand{\clip}{\operatorname{clip}_{[0,1]}}
@@ -44,7 +44,7 @@
 \newtheorem{designrule}[proposition]{Design rule}
 \lstset{basicstyle=\ttfamily\small,backgroundcolor=\color{pale},frame=single,rulecolor=\color{navy!25},breaklines=true,columns=fullflexible,showstringspaces=false}
 
-\title{\textbf{VisualLesson AI}\\[0.35em]\large Why We Generate, Check, and Compose High-School Lessons in Stages\\[0.75em]\normalsize Technical Product White Paper, Version 3.0}
+\title{\textbf{Explain It!}\\[0.35em]\large Ask Anything. See It Clearly.\\[0.35em]\large Why We Generate, Check, and Compose High-School Lessons in Stages\\[0.75em]\normalsize Technical Product White Paper, Version 3.1}
 \author{Meiyu Shen \and Yifan Yan \and Jiachen Yu\\Jiaxing Senior High School (BC Offshore Program)}
 \date{August 2026}
 
@@ -52,9 +52,9 @@
 \maketitle
 
 \begin{abstract}
-We present \product, a deployable lesson studio that turns a Grades 9--12 question into a structured explanation, source-grounded notes, a quiz, a connected concept map, and an optional narrated video. We ask a practical design question: if generation is probabilistic and media calls are expensive, where should a small educational system check its work? We answer with a staged pipeline. Gate 1 screens the explanation before research and media spending. Gate 2 checks seven image frames with parallel pixel diagnostics and, only when those checks pass, one semantic contact-sheet review. We generate video by composing inspected still images, captions, transitions, and narration rather than by calling a direct text-to-video model. The design follows established ideas from multimedia learning, cognitive-load research, retrieval practice, feedback research, and risk-based AI evaluation, while remaining explicit that automated gates do not prove factual correctness \citep{mayer2009multimedia,sweller1988,roediger2006,hattie2007,nist2024airmf}.
+We present the \product\ system, a deployable lesson studio that turns a Grades 9--12 question into a structured explanation, source-grounded notes, a quiz, a connected concept map, and an optional narrated video. We ask a practical design question: if generation is probabilistic and media calls are expensive, where should a small educational system check its work? We answer with a staged pipeline. Gate 1 screens the explanation before research and media spending. Gate 2 checks seven image frames with parallel pixel diagnostics and, only when those checks pass, one semantic contact-sheet review. We generate video by composing inspected still images, captions, transitions, and narration rather than by calling a direct text-to-video model. The design follows established ideas from multimedia learning, cognitive-load research, retrieval practice, feedback research, and risk-based AI evaluation, while remaining explicit that automated gates do not prove factual correctness \citep{mayer2009multimedia,sweller1988,roediger2006,hattie2007,nist2024airmf}.
 
-This Version 3.0 paper documents the deployed system through commit \code{16bfde7}. It includes the optional OpenAI media key shown when DeepSeek is selected for text, the directional and interactive concept neighborhood, live per-frame progress, and stage-aware study tips. We derive the gate equations using high-school algebra, probability, weighted averages, inequalities, and directed graphs. Proofs establish what the formulas do guarantee---bounded scores, noncompensatory accuracy, all-frame enforcement, expected-cost ordering, parallel-time bounds, conserved scene duration, and monotone progress---and state what they cannot guarantee. The application is available at \url{https://teachhighschool.streamlit.app/}; source code is available at \url{https://github.com/allanzhang721/AiLessonStudio}.
+This Version 3.1 paper documents the deployed system available in August 2026. It includes the optional OpenAI media key shown when DeepSeek is selected for text, the directional and interactive concept neighborhood, live per-frame progress, and stage-aware study tips. We derive the gate equations using high-school algebra, probability, weighted averages, inequalities, and directed graphs. Proofs establish what the formulas do guarantee---bounded scores, noncompensatory accuracy, all-frame enforcement, expected-cost ordering, parallel-time bounds, conserved scene duration, and monotone progress---and state what they cannot guarantee. The application is available at \url{https://teachhighschool.streamlit.app/}; source code is available at \url{https://github.com/allanzhang721/AiLessonStudio}.
 \end{abstract}
 
 \section{Introduction}
@@ -480,10 +480,12 @@ requirements-research.txt     # optional experiment dependencies
 
 \subsection{Test protocol}
 
-The repository test discovery contains 39 tests at this paper version. It covers frame scoring and short-circuit behavior, explanation repair, provider routing, the conditional second-key Streamlit flow, concept relationship direction, progress callbacks, waiting-tip selection, source annotation conversion, schema normalization, Markdown and LaTeX handling, fail-fast plan validation, student-analysis helpers, narration arguments, audio-aware timing, and real H.264 encoding. The command used for the deployment branch is:
+The production subset contains 33 executable tests at this paper version. It covers frame scoring and short-circuit behavior, explanation repair, provider routing, the conditional second-key Streamlit flow, concept relationship direction, progress callbacks, waiting-tip selection, source annotation conversion, schema normalization, Markdown and LaTeX handling, fail-fast plan validation, student-analysis helpers, narration arguments, audio-aware timing, and real H.264 encoding. Six additional research-only tests depend on experiment modules and data that are intentionally not shipped with the lightweight deployment checkout. The production command is:
 
 \begin{lstlisting}[language=bash]
-python -m unittest discover -s tests -v
+python -m pytest -q tests \
+  --ignore=tests/test_checker1_research.py \
+  --ignore=tests/test_checker2_research.py
 \end{lstlisting}
 
 A passing unit suite establishes that the code meets the tested contracts. It does not establish educational effectiveness. A publication evaluation should additionally include expert factual review, student comprehension measures, accessibility review, cost records, and failure analysis.
@@ -1065,10 +1067,10 @@ Official Streamlit guidance recommends declaring dependencies, selecting the int
 Compile the paper from the repository root with:
 \begin{lstlisting}[language=bash]
 cd docs/whitepaper
-pdflatex VisualLessonAI_White_Paper.tex
-bibtex VisualLessonAI_White_Paper
-pdflatex VisualLessonAI_White_Paper.tex
-pdflatex VisualLessonAI_White_Paper.tex
+pdflatex Explain_It_White_Paper.tex
+bibtex Explain_It_White_Paper
+pdflatex Explain_It_White_Paper.tex
+pdflatex Explain_It_White_Paper.tex
 \end{lstlisting}
 The compilation expects the PNG experiment figures in \code{../../paper\_figures/}. All architecture and process diagrams are embedded as TikZ source in this file. The output should be archived together with the source, bibliography, figure files, software commit, and a short change log.
 

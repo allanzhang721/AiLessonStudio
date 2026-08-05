@@ -1,8 +1,7 @@
-# Deploy VisualLesson AI
+# Deploy Explain It!
 
-The production entry point is streamlit_app.py. The hosted app supports either
-a server-side OpenAI key in Streamlit Secrets or a visitor-supplied key that is
-kept only in that Streamlit session.
+The production entry point is streamlit_app.py. Each visitor supplies a text API
+key in the interface; the key is kept only in that Streamlit session.
 
 ## Streamlit Community Cloud
 
@@ -10,11 +9,10 @@ kept only in that Streamlit session.
 2. Open https://share.streamlit.io/ and choose **Create app**.
 3. Select this repository, branch, and streamlit_app.py.
 4. Open **Advanced settings** and select Python 3.12.
-5. In **Secrets**, add OPENAI_API_KEY = "sk-your-key".
-6. Deploy. Keep the key only in Streamlit Secrets, never in the repository.
+5. Deploy. No server-side API secret is required.
 
-The app still opens without a key and provides a complete demo. Visitors can
-also supply their own key in the password field if no server key is configured.
+The app opens without a key so visitors can review the landing page, but lesson
+generation requires a visitor-supplied API key kept only in that session.
 
 ## Local smoke test
 
