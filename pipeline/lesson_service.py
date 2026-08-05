@@ -334,13 +334,51 @@ def related_topic_resources(subject: str, topic: str) -> list[dict[str, str]]:
     return resources
 
 
-def build_concept_map(bundle: dict[str, Any], subject: str) -> dict[str, Any]:
-    """Attach curated sources to model-proposed conceptual relationships."""
-    topics = _normalize_related_topics(bundle.get("related_topics"), bundle.get("connections"))
-    return {
-        "center": _clean_text(bundle.get("title"), 140) or "Current lesson",
-        "nodes": [
-            {**item, "sources": related_topic_resources(subject, item["topic"])}
-            for item in topics[:6]
-        ],
+def _concept_relationship_kind(value: Any) -> str:
+    """Map free-form model wording to a small, stable learning-role vocabulary."""
+    relationship = _clean_text(value, 80).lower()
+    if any(word in relationship for word in ("prerequisite", "foundation", "before", "prior")):
+        return "prerequisite"
+    if any(word in relationship for word in ("application", "real life", "use", "example")):
+        return "application"
+    if any(word in relationship for word in ("contrast", "compare", "difference", "versus")):
+        return "contrast"
+    if any(word in relationship for word in ("next", "extension", "advanced", "after")):
+        return "next step"
+    return "related concept"
+
+
+def _concept_challenge(topic: str, relationship_kind: str, center: str) -> str:
+    prompts = {
+        "prerequisite": f"In one sentence, explain why {topic} is needed before {center}.",
+        "application": f"Give one real-world situation where {topic} helps you use {center}.",
+        "contrast": f"Name one similarity and one difference between {topic} and {center}.",
+        "next step": f"Predict one new question about {center} that {topic} could help answer.",
+        "related concept": f"Draw or explain one clear link between {topic} and {center}.",
     }
+    return prompts[relationship_kind]
+
+
+def build_concept_map(bundle: dict[str, Any], subject: str) -> dict[str, Any]:
+    """Build a directional concept neighborhood with curated study sources."""
+    center = _clean_text(bundle.get("title"), 140) or "Current lesson"
+    topics = _normalize_related_topics(bundle.get("related_topics"), bundle.get("connections"))
+    palette = {
+        "prerequisite": {"color": "#2563EB", "fill": "#EAF2FF", "direction": "in"},
+        "application": {"color": "#059669", "fill": "#E8F8F1", "direction": "out"},
+        "contrast": {"color": "#D97706", "fill": "#FFF4DD", "direction": "side"},
+        "next step": {"color": "#7C3AED", "fill": "#F2EAFF", "direction": "out"},
+        "related concept": {"color": "#526078", "fill": "#EEF2F7", "direction": "side"},
+    }
+    nodes = []
+    for index, item in enumerate(topics[:6], start=1):
+        kind = _concept_relationship_kind(item.get("relationship"))
+        nodes.append({
+            **item,
+            "id": f"concept-{index}",
+            "relationship_kind": kind,
+            "challenge": _concept_challenge(item["topic"], kind, center),
+            "sources": related_topic_resources(subject, item["topic"]),
+            **palette[kind],
+        })
+    return {"center": center, "nodes": nodes, "relationship_order": list(palette)}

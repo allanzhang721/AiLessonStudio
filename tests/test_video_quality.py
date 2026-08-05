@@ -7,6 +7,8 @@ import imageio.v2 as imageio
 from PIL import Image, ImageDraw
 from streamlit.testing.v1 import AppTest
 
+from app_v2 import _waiting_tip
+from pipeline.lesson_service import build_concept_map
 from pipeline.video_pipeline import (
     build_narration_script,
     calculate_scene_durations,
@@ -44,6 +46,21 @@ class _TTSClient:
 
 
 class VideoQualityTests(unittest.TestCase):
+    def test_waiting_tips_are_short_stable_and_stage_aware(self):
+        first = _waiting_tip("draft", 10, "Physics")
+        self.assertEqual(first, _waiting_tip("draft", 10, "Physics"))
+        self.assertNotEqual(first, _waiting_tip("gate", 10, "Physics"))
+        self.assertLess(len(first), 180)
+    def test_concept_map_classifies_learning_directions(self):
+        concept_map = build_concept_map({
+            "title": "Forces",
+            "related_topics": [
+                {"topic": "Vectors", "relationship": "prerequisite", "why_useful": "Resolve directions."},
+                {"topic": "Momentum", "relationship": "next step", "why_useful": "Connect force and time."},
+            ],
+        }, "Physics")
+        self.assertEqual([node["direction"] for node in concept_map["nodes"]], ["in", "out"])
+        self.assertTrue(all(node["challenge"] and node["sources"] for node in concept_map["nodes"]))
     def _plan(self):
         return {
             "captions": [
