@@ -116,6 +116,9 @@ class VideoQualityTests(unittest.TestCase):
         self.assertIn("Teaching voice", labels)
         self.assertIn("Add cited web research", [item.label for item in app.toggle])
         self.assertFalse(any("Demo" in item.label for item in app.button))
+        self.assertEqual(len(app.get("progress")), 6)
+        self.assertEqual(len(app.dataframe), 0)
+        self.assertTrue(any("checker tests teach us" in str(item.value).lower() for item in app.markdown))
 
 
 if __name__ == "__main__":
