@@ -109,6 +109,8 @@ class ProductionQualityTests(unittest.TestCase):
         result = local_explanation_review("Why does gravity act?", "Because it does.", 10, "Physics")
         self.assertFalse(result["pass"])
         self.assertTrue(result["issues"])
+        self.assertEqual(result["metrics"]["model_calls"], 0)
+        self.assertIn("overall_score", result)
 
     def test_llm_gate_repairs_then_passes(self):
         bad = "This is much too short."
@@ -121,6 +123,9 @@ class ProductionQualityTests(unittest.TestCase):
         self.assertTrue(result["pass"])
         self.assertTrue(result["was_revised"])
         self.assertEqual(result["total_rounds"], 2)
+        self.assertEqual(result["metrics"]["model_calls"], 2)
+        self.assertEqual(len(result["method_comparison"]), 2)
+        self.assertFalse(result["trained_model"]["used"])
 
 
 if __name__ == "__main__":

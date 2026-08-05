@@ -107,3 +107,13 @@ See `DEPLOYMENT.md` for deployment details.
 - `pipeline/frame_checker.py`: visual quality gate
 - `pipeline/video_pipeline.py`: narration and 1080p MP4 composition
 - `pipeline/pipeline.py`: end-to-end orchestration
+
+## Fast quality-gate architecture
+
+The deployed gates use a cost-aware cascade:
+
+- **Gate 1:** millisecond structural checks followed by one compact five-dimension LLM audit. A failing draft gets at most one repair before media spending begins.
+- **Gate 2:** five render-health metrics are computed across frames in parallel. Failed technical checks stop before any vision-model call; passing frames receive one semantic contact-sheet audit.
+- **Research benchmarks:** the homepage compares saved trained and untrained experiment results by accuracy, precision, recall, F1, AUROC, and experiment time. These offline metrics are labeled separately from live per-lesson latency.
+
+Saved text classifiers remain research baselines because they predict error categories rather than correctness. Saved visual probes remain benchmarks; the production app avoids their heavyweight ML dependencies for faster startup.

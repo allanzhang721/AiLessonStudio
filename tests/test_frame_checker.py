@@ -4,7 +4,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from pipeline.frame_checker import checker2_validate_frames
+from pipeline.frame_checker import checker2_validate_frames, checker2_validate_lesson_frames
 
 
 class FrameCheckerTests(unittest.TestCase):
@@ -28,6 +28,35 @@ class FrameCheckerTests(unittest.TestCase):
             result = checker2_validate_frames(frame_paths, threshold=0.2)
             self.assertIn("overall_score", result)
             self.assertEqual(len(result["per_frame"]), 3)
+            self.assertEqual(result["metrics"]["model_calls"], 0)
+            self.assertEqual(result["metrics"]["parallel_workers"], 3)
+            self.assertTrue(result["method_comparison"])
+
+    def test_trained_request_falls_back_without_breaking(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "frame.png"
+            Image.new("RGB", (1536, 1024), color=(100, 140, 180)).save(path)
+            result = checker2_validate_frames([path], threshold=0.0, backend="trained")
+            self.assertEqual(result["mode"], "heuristic_fallback")
+            self.assertTrue(result["trained_model_requested"])
+            self.assertFalse(result["trained_model_used"])
+            self.assertEqual(len(result["per_frame"]), 1)
+
+    def test_bad_render_skips_semantic_model_call(self):
+        class NeverCall:
+            class Responses:
+                def create(self, **kwargs):
+                    raise AssertionError("semantic model should not be called")
+            responses = Responses()
+
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "blank.png"
+            Image.new("RGB", (320, 200), color="white").save(path)
+            result = checker2_validate_lesson_frames(
+                [path], plan={"question_text": "Why?"}, client=NeverCall()
+            )
+            self.assertEqual(result["mode"], "technical_block")
+            self.assertEqual(result["metrics"]["model_calls"], 0)
 
 
 if __name__ == "__main__":

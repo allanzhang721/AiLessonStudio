@@ -11,6 +11,7 @@ from typing import Any
 import streamlit as st
 
 from pipeline.clients import build_text_client
+from pipeline.gate_benchmarks import benchmark_rows
 from pipeline.lesson_service import curated_resources, generate_lesson_bundle, research_lesson_sources
 from pipeline.pipeline import run_pipeline
 from pipeline.quality_gates import review_explanation
@@ -104,6 +105,11 @@ def _styles() -> None:
         .idea { background:#edf8f7; border-left:4px solid #19a6a2; border-radius:10px; padding:.7rem .9rem; margin:.45rem 0; }
         .gate-pass { color:#087d55; font-weight:700; }
         .gate-fail { color:#bd3f32; font-weight:700; }
+        .flow-step { background:white; border:1px solid #e5e9f2; border-top:4px solid #19a6a2;
+          border-radius:16px; padding:1rem; min-height:142px; box-shadow:0 5px 20px rgba(23,32,51,.05); }
+        .flow-step .number { color:#177c78; font-size:.75rem; font-weight:800; letter-spacing:.08em; }
+        .flow-step h4 { margin:.35rem 0; color:#172033; }
+        .flow-step p { color:#526078; font-size:.9rem; margin:0; }
         div.stButton > button { border-radius: 12px; min-height: 44px; font-weight: 700; }
         </style>
         """,
@@ -387,6 +393,60 @@ def _resources_tab(subject: str, question: str, bundle: dict[str, Any]) -> None:
             st.warning("MP4 download is held because Gate 2 marked the visuals as needing review.")
 
 
+def _benchmark_dashboard() -> None:
+    st.markdown("### How the quality system works")
+    cols = st.columns(4)
+    cards = [
+        ("01 · DRAFT", "Explain", "A structured high-school lesson is drafted with the learner's chosen text model."),
+        ("02 · GATE 1", "Verify reasoning", "Fast local checks plus one compact semantic rubric; one repair is allowed."),
+        ("03 · BUILD", "Ground & illustrate", "Sources, storyboard images, captions, and narration are assembled only after Gate 1."),
+        ("04 · GATE 2", "Release safely", "Parallel render checks run first; one contact-sheet audit checks teaching alignment."),
+    ]
+    for column, (number, title, body) in zip(cols, cards):
+        column.markdown(f"<div class='flow-step'><div class='number'>{number}</div><h4>{title}</h4><p>{body}</p></div>", unsafe_allow_html=True)
+
+    st.markdown("### Checker experiment snapshot")
+    st.caption("Saved offline evaluations from this project's research runs. Experiment runtime is not per-lesson latency, and datasets differ between gates.")
+    gate1, gate2 = st.tabs(["Gate 1 · text methods", "Gate 2 · visual methods"])
+    for tab, gate in ((gate1, "Gate 1"), (gate2, "Gate 2")):
+        with tab:
+            rows = benchmark_rows(gate)
+            st.bar_chart(rows, x="Method", y="F1", color="Trained")
+            st.dataframe(rows, hide_index=True, use_container_width=True)
+            if gate == "Gate 1":
+                st.info("The trained models classify error types. Production still uses local checks plus an LLM rubric because classification accuracy alone cannot verify a new explanation.")
+            else:
+                st.info("The lightweight untrained CLIP threshold led this saved comparison. Production avoids heavyweight local ML and combines fast pixel diagnostics with one semantic vision audit.")
+
+
+def _quality_report() -> None:
+    gate1 = st.session_state.gate1 or {}
+    pipeline_result = st.session_state.pipeline_result or {}
+    gate2 = pipeline_result.get("checker2_result") or {}
+    st.markdown("### Live gate performance")
+    for title, result in (("Gate 1 · explanation", gate1), ("Gate 2 · visuals", gate2)):
+        st.markdown(f"#### {title}")
+        if not result:
+            st.caption("Not run for this lesson.")
+            continue
+        metrics = result.get("metrics", {})
+        columns = st.columns(3)
+        columns[0].metric("Decision", "Pass" if result.get("pass") else "Review")
+        score = result.get("overall_score")
+        columns[1].metric("Score", f"{float(score) * 100:.0f}%" if isinstance(score, (int, float)) else "—")
+        columns[2].metric("Live latency", f"{float(metrics.get('total_latency_ms', 0)):.0f} ms")
+        st.caption(f"Model calls: {metrics.get('model_calls', 0)} · Path: {' → '.join(result.get('decision_path', [])) or result.get('mode', 'unknown')}")
+        methods = result.get("method_comparison", [])
+        if methods:
+            st.dataframe(methods, hide_index=True, use_container_width=True)
+        with st.expander(f"{title} technical details"):
+            st.json(result)
+    stage_times = pipeline_result.get("stage_times", {})
+    if stage_times:
+        st.markdown("#### End-to-end stage time")
+        st.bar_chart([{"Stage": key.replace("_", " ").title(), "Seconds": value} for key, value in stage_times.items()], x="Stage", y="Seconds")
+    st.caption("A passed automated gate reduces risk but is not a substitute for teacher review in high-stakes instruction.")
+
 def main() -> None:
     st.set_page_config(page_title="VisualLesson AI", page_icon=":material/school:", layout="wide")
     _init_state()
@@ -526,11 +586,12 @@ def main() -> None:
     bundle = st.session_state.bundle
     if not bundle:
         st.info("Connect your API providers and ask a question in the sidebar to create a lesson.")
-        st.markdown("#### What changed")
-        c1, c2, c3 = st.columns(3)
-        c1.markdown("<div class='card'><b>Useful Gate 1</b><br>Checks accuracy, logic, completeness, clarity, and grade fit before media spending.</div>", unsafe_allow_html=True)
-        c2.markdown("<div class='card'><b>Useful Gate 2</b><br>Checks both render health and whether the visuals teach the stated explanation.</div>", unsafe_allow_html=True)
-        c3.markdown("<div class='card'><b>Student feedback</b><br>Turns missed quiz concepts into a focused review list.</div>", unsafe_allow_html=True)
+        metrics = st.columns(4)
+        metrics[0].metric("Quality gates", "2", "local-first")
+        metrics[1].metric("Gate 1 dimensions", "5", "one compact audit")
+        metrics[2].metric("Visual checks", "5 × 7", "parallel")
+        metrics[3].metric("Heavy local ML", "0", "fast startup")
+        _benchmark_dashboard()
         return
 
     gate_col1, gate_col2 = st.columns(2)
@@ -550,9 +611,4 @@ def main() -> None:
     with resources:
         _resources_tab(subject, question, bundle)
     with quality:
-        st.markdown("### Explanation audit")
-        st.json(st.session_state.gate1 or {})
-        if st.session_state.pipeline_result:
-            st.markdown("### Visual audit")
-            st.json(st.session_state.pipeline_result.get("checker2_result") or {})
-        st.caption("A passed automated gate reduces risk but is not a substitute for teacher review in high-stakes instruction.")
+        _quality_report()
