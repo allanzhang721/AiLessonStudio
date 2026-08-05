@@ -538,19 +538,37 @@ def _benchmark_dashboard() -> None:
     for column, (number, title, body) in zip(cols, cards):
         column.markdown(f"<div class='flow-step'><div class='number'>{number}</div><h4>{title}</h4><p>{body}</p></div>", unsafe_allow_html=True)
 
-    st.markdown("### Checker experiment snapshot")
-    st.caption("Saved offline evaluations from this project's research runs. Experiment runtime is not per-lesson latency, and datasets differ between gates.")
-    gate1, gate2 = st.tabs(["Gate 1 · text methods", "Gate 2 · visual methods"])
+    st.markdown("### What did our checker tests teach us?")
+    st.caption("A quick, friendly view of saved lab results. Higher scores are better; these are not the waiting time for your lesson.")
+    gate1, gate2 = st.tabs(["Explanation checks", "Visual matching"])
+    short_names = {
+        "DistilBERT error classifier": "DistilBERT",
+        "BERT error classifier": "BERT",
+        "RoBERTa error classifier": "RoBERTa",
+        "CLIP cosine threshold": "CLIP similarity",
+        "CLIP linear probe": "CLIP + linear layer",
+        "CLIP MLP probe": "CLIP + small neural net",
+    }
     for tab, gate in ((gate1, "Gate 1"), (gate2, "Gate 2")):
         with tab:
-            rows = benchmark_rows(gate)
-            st.bar_chart(rows, x="Method", y="F1", color="Trained")
-            st.dataframe(rows, hide_index=True, use_container_width=True)
+            rows = sorted(benchmark_rows(gate), key=lambda row: row["F1"], reverse=True)
+            cards = st.columns(3)
+            for rank, (column, row) in enumerate(zip(cards, rows), start=1):
+                with column.container(border=True):
+                    badge = "Best result" if rank == 1 else ("Trained model" if row["Trained"] == "Yes" else "No extra training")
+                    st.caption(badge.upper())
+                    st.markdown(f"#### {short_names.get(row['Method'], row['Method'])}")
+                    st.metric("F1 score", f"{row['F1'] * 100:.1f}%")
+                    st.progress(float(row["F1"]), text="Overall balance")
+                    st.caption(f"Accuracy {row['Accuracy'] * 100:.1f}% · Recall {row['Recall'] * 100:.1f}%")
+                    if row.get("AUROC") is not None:
+                        st.caption(f"AUROC {row['AUROC'] * 100:.1f}%")
             if gate == "Gate 1":
-                st.info("The trained models classify error types. Production still uses local checks plus an LLM rubric because classification accuracy alone cannot verify a new explanation.")
+                st.success("Takeaway: RoBERTa was strongest at sorting known error types. For a brand-new lesson, we still use fast local checks plus a compact meaning review because error labels alone cannot prove an explanation is correct.")
             else:
-                st.info("The lightweight untrained CLIP threshold led this saved comparison. Production avoids heavyweight local ML and combines fast pixel diagnostics with one semantic vision audit.")
-
+                st.success("Takeaway: the simplest CLIP similarity method won this comparison. That supports our production choice to keep visual checks light, then use one semantic review only when the frames pass basic quality checks.")
+            with st.expander("How to read these scores"):
+                st.markdown("- **F1** balances missed problems and false alarms.\n- **Accuracy** is the share classified correctly.\n- **Recall** shows how many target examples were found.\n- **AUROC** summarizes ranking quality across thresholds.\n\nThe two tabs use different datasets, so compare methods inside a tab rather than comparing Gate 1 directly with Gate 2.")
 
 def _quality_report() -> None:
     gate1 = st.session_state.gate1 or {}
