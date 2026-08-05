@@ -5,6 +5,11 @@ secondaryBackgroundColor = "#FFFFFF"
 textColor = "#172033"
 font = "sans serif"
 
+[theme.sidebar]
+primaryColor = "#19A6A2"
+backgroundColor = "#101828"
+secondaryBackgroundColor = "#FFFFFF"
+textColor = "#172033"
 [server]
 headless = true
 maxUploadSize = 25
