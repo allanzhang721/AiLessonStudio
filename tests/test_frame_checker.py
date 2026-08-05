@@ -63,6 +63,7 @@ class FrameCheckerTests(unittest.TestCase):
     def test_gate2_result_is_published_before_later_media_failure(self):
         gate_result = {"pass": True, "overall_score": 0.9, "mode": "technical_only"}
         received = []
+        progress_events = []
         plan = {
             "question_id": "callback_test",
             "question_text": "Why?",
@@ -82,8 +83,10 @@ class FrameCheckerTests(unittest.TestCase):
                     question="Why?", explanation="A sufficiently complete explanation.", grade=10,
                     output_root=Path(td), run_openai=False, run_checker=False,
                     gate2_callback=received.append,
+                    progress_callback=lambda stage, details: progress_events.append(stage),
                 )
         self.assertEqual(received, [gate_result])
+        self.assertEqual(progress_events, ["storyboard", "visual_check", "preview", "narration"])
 
 if __name__ == "__main__":
     unittest.main()

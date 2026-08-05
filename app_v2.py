@@ -60,6 +60,44 @@ IMAGE_PROVIDERS = {
 }
 
 
+_WAITING_TIPS = {
+    "draft": [
+        "Predict the answer before it appears; comparing your prediction with the lesson makes the idea stick.",
+        "Write the question in your own words. If you can simplify the question, you already understand its target.",
+        "Recall one fact you already know about this topic without opening notes.",
+    ],
+    "gate": [
+        "Check units as well as numbers. A correct-looking calculation with the wrong unit is still wrong.",
+        "Ask: what assumption makes this explanation true? Conditions matter in science and mathematics.",
+        "Try to find one possible counterexample. Good explanations survive careful questions.",
+    ],
+    "research": [
+        "A source is useful when it supports a specific claim, not simply because its title sounds relevant.",
+        "Compare two sources on the same point. Agreement is evidence; disagreement is a reason to investigate.",
+        "Prefer textbooks, universities, government science pages, and original research over anonymous summaries.",
+    ],
+    "frame": [
+        "Turn each picture into one sentence: what changed from the previous frame, and why?",
+        "Follow arrows before reading labels; direction often carries the main idea in a diagram.",
+        "Pause after each visual step and explain it aloud as if teaching a classmate.",
+    ],
+    "compose": [
+        "Retrieval beats rereading: close your notes and reconstruct the main steps from memory.",
+        "Use the finished video once for overview, then replay only the step that caused confusion.",
+        "A strong study note contains an idea, an example, and one common mistake—not a copied paragraph.",
+    ],
+}
+
+
+def _waiting_tip(stage: str, grade: int, subject: str, step: int = 0) -> str:
+    """Return a stable, short study tip suited to the current generation stage."""
+    category = "frame" if stage in {"storyboard", "frame", "visual_check", "preview"} else stage
+    if category in {"narration", "complete"}:
+        category = "compose"
+    tips = _WAITING_TIPS.get(category, _WAITING_TIPS["draft"])
+    seed = int(grade) + step + sum(ord(char) for char in str(subject))
+    return tips[seed % len(tips)]
+
 def _init_state() -> None:
     defaults = {
         "bundle": None,
@@ -172,7 +210,15 @@ def _create_lesson(
 
     try:
         with st.status("Building your lesson", expanded=True) as status:
-            status.write(f"Drafting with {text_provider}: {text_model}...")
+            progress_bar = st.progress(0.05, text="Starting your lesson...")
+            tip_slot = st.empty()
+
+            def update_wait(stage: str, message: str, progress: float, step: int = 0) -> None:
+                progress_bar.progress(max(0.0, min(1.0, progress)), text=message)
+                tip_slot.info(f"Study tip while you wait: {_waiting_tip(stage, grade, subject, step)}")
+                status.write(message)
+
+            update_wait("draft", f"Drafting with {text_provider}: {text_model}...", 0.08)
             bundle = generate_lesson_bundle(
                 client,
                 model=text_model,
@@ -181,7 +227,7 @@ def _create_lesson(
                 grade=grade,
                 language=language,
             )
-            status.write("Gate 1: checking accuracy, logic, and grade fit...")
+            update_wait("gate", "Gate 1: checking accuracy, logic, and grade fit...", 0.25)
             gate1 = review_explanation(
                 client,
                 model=text_model,
@@ -220,7 +266,7 @@ def _create_lesson(
                 return
 
             if research_enabled:
-                status.write("Searching reliable sources and building cited notes...")
+                update_wait("research", "Searching reliable sources and building cited notes...", 0.34)
                 bundle["research"] = research_lesson_sources(
                     client,
                     question=question,
@@ -230,7 +276,16 @@ def _create_lesson(
                     model=text_model,
                 )
             if create_video:
-                status.write(f"Illustrating seven steps with {image_provider}: {image_model}...")
+                update_wait("storyboard", f"Preparing seven visual steps with {image_provider}: {image_model}...", 0.40)
+
+                def media_progress(stage: str, details: dict) -> None:
+                    update_wait(
+                        stage,
+                        str(details.get("message") or "Building the visual lesson..."),
+                        float(details.get("progress") or 0.40),
+                        int(details.get("step") or 0),
+                    )
+
                 run = run_pipeline(
                     question=question,
                     explanation=bundle["explanation"],
@@ -249,6 +304,7 @@ def _create_lesson(
                     tts_api_key=narration_key,
                     tts_voice=narration_voice,
                     gate2_callback=lambda gate: st.session_state.__setitem__("gate2", gate),
+                    progress_callback=media_progress,
                 )
                 st.session_state.pipeline_result = run
                 st.session_state.gate2 = run.get("checker2_result") or st.session_state.gate2
@@ -257,6 +313,7 @@ def _create_lesson(
                     json.dumps(bundle, ensure_ascii=False, indent=2),
                     encoding="utf-8",
                 )
+            update_wait("complete", "Lesson ready—open a tab and test your understanding.", 1.0)
             status.update(label="Lesson ready", state="complete", expanded=False)
     except Exception as exc:
         gate2_state = st.session_state.get("gate2") or {}
@@ -290,7 +347,20 @@ def _regenerate_media(
     st.session_state.pipeline_result = None
     try:
         with st.status("Regenerating visual lesson", expanded=True) as status:
-            status.write("Creating a fresh seven-frame storyboard...")
+            regeneration_progress = st.progress(0.10, text="Preparing a fresh storyboard...")
+            regeneration_tip = st.empty()
+            request_grade = int(request.get("grade") or 10)
+            request_subject = str(request.get("subject") or "General")
+
+            def regeneration_update(stage: str, details: dict) -> None:
+                progress = float(details.get("progress") or 0.10)
+                step = int(details.get("step") or 0)
+                message = str(details.get("message") or "Creating a fresh seven-frame storyboard...")
+                regeneration_progress.progress(max(0.0, min(1.0, progress)), text=message)
+                regeneration_tip.info(f"Study tip while you wait: {_waiting_tip(stage, request_grade, request_subject, step)}")
+                status.write(message)
+
+            regeneration_update("storyboard", {"message": "Creating a fresh seven-frame storyboard...", "progress": 0.10})
             run = run_pipeline(
                 question=str(request.get("question") or bundle.get("title") or "Lesson topic"),
                 explanation=bundle["explanation"],
@@ -309,9 +379,11 @@ def _regenerate_media(
                 tts_api_key=narration_key,
                 tts_voice=narration_voice,
                 gate2_callback=lambda gate: st.session_state.__setitem__("gate2", gate),
+                progress_callback=regeneration_update,
             )
             st.session_state.pipeline_result = run
             st.session_state.gate2 = run.get("checker2_result") or st.session_state.gate2
+            regeneration_update("complete", {"message": "Fresh visual lesson ready.", "progress": 1.0})
             status.update(label="Fresh visual lesson ready", state="complete", expanded=False)
     except Exception as exc:
         current = st.session_state.get("gate2") or {}
@@ -324,42 +396,121 @@ def _dot_escape(value: Any) -> str:
     return str(value or "").replace("\\", "\\\\").replace('"', '\\"').replace("\n", " ")
 
 
+def _dot_label(value: Any, width: int = 23) -> str:
+    """Wrap graph labels without cutting words."""
+    words = str(value or "Related concept").split()
+    lines: list[str] = []
+    current: list[str] = []
+    for word in words:
+        if current and len(" ".join(current + [word])) > width:
+            lines.append(" ".join(current))
+            current = [word]
+        else:
+            current.append(word)
+    if current:
+        lines.append(" ".join(current))
+    return r"\n".join(_dot_escape(line) for line in lines[:3])
+
+
 def _concept_map_tab(bundle: dict[str, Any], subject: str) -> None:
     concept_map = build_concept_map(bundle, subject)
     nodes = concept_map.get("nodes", [])
-    st.markdown("### Connected concept map")
-    st.caption("Explore outward from the current lesson. Click a graph node to open its first trusted source, or use all source buttons below.")
+    st.markdown("### Explore the concept neighborhood")
+    st.caption("See what comes before this lesson, how it differs from nearby ideas, where it is used, and what to learn next.")
     if not nodes:
         st.info("Regenerate this lesson to create its related-topic network.")
         return
-    center = _dot_escape(concept_map.get("center", "Current lesson"))
+
+    role_names = {
+        "all": "All links",
+        "prerequisite": "Foundations",
+        "application": "Applications",
+        "contrast": "Compare",
+        "next step": "Next steps",
+        "related concept": "Related",
+    }
+    available_roles = [
+        role for role in concept_map.get("relationship_order", [])
+        if any(node.get("relationship_kind") == role for node in nodes)
+    ]
+    selected_role = st.radio(
+        "Learning direction",
+        ["all", *available_roles],
+        index=0,
+        format_func=lambda role: role_names.get(role, str(role).title()),
+        horizontal=True,
+        key="concept_role_filter",
+    )
+    visible_nodes = nodes if selected_role in (None, "all") else [
+        node for node in nodes if node.get("relationship_kind") == selected_role
+    ]
+
+    center = _dot_label(concept_map.get("center", "Current lesson"), 27)
     dot = [
         "digraph ConceptMap {",
-        "graph [rankdir=LR, bgcolor=transparent, pad=0.25, nodesep=0.45, ranksep=0.8];",
-        "node [shape=box, style=\"rounded,filled\", fontname=\"Arial\", fontsize=12, margin=\"0.18,0.12\", color=\"#19A6A2\"];",
-        f'center [label="{center}", fillcolor="#17345F", fontcolor="white", penwidth=2];',
+        'graph [rankdir=LR, bgcolor="transparent", pad=0.35, nodesep=0.55, ranksep=1.05, splines=curved, outputorder=edgesfirst];',
+        'node [shape=box, style="rounded,filled", fontname="Arial", fontsize=12, margin="0.22,0.15", penwidth=1.7];',
+        'edge [fontname="Arial", fontsize=9, arrowsize=0.8, penwidth=1.5];',
+        f'center [label="{center}", fillcolor="#17345F", color="#17345F", fontcolor="white", penwidth=2.4];',
     ]
-    for index, node in enumerate(nodes, start=1):
-        source = (node.get("sources") or [{}])[0]
-        label = _dot_escape(node.get("topic"))
-        relationship = _dot_escape(node.get("relationship"))
-        url = _dot_escape(source.get("url", "https://openstax.org/subjects"))
-        dot.append(f'n{index} [label="{label}", fillcolor="#EAF8F7", URL="{url}", target="_blank"];')
-        dot.append(f'center -> n{index} [label="{relationship}", color="#7A8CA8", fontcolor="#526078", fontsize=9];')
+    for index, node in enumerate(visible_nodes, start=1):
+        label = _dot_label(node.get("topic"))
+        relationship = _dot_escape(role_names.get(str(node.get("relationship_kind")), str(node.get("relationship", "related"))))
+        color = _dot_escape(node.get("color", "#526078"))
+        fill = _dot_escape(node.get("fill", "#EEF2F7"))
+        dot.append(f'n{index} [label="{label}", fillcolor="{fill}", color="{color}", fontcolor="#172033"];')
+        direction = node.get("direction")
+        if direction == "in":
+            dot.append(f'n{index} -> center [label="{relationship}", color="{color}", fontcolor="{color}"];')
+        elif direction == "side":
+            dot.append(f'center -> n{index} [label="{relationship}", color="{color}", fontcolor="{color}", dir=both, arrowtail=none];')
+        else:
+            dot.append(f'center -> n{index} [label="{relationship}", color="{color}", fontcolor="{color}"];')
     dot.append("}")
     st.graphviz_chart("\n".join(dot), use_container_width=True)
+    st.caption("Blue points toward required foundations; green and purple lead toward use and further learning. Filter the map or focus on one connection below.")
 
-    st.markdown("### Study each connection")
-    columns = st.columns(2)
-    for index, node in enumerate(nodes):
-        with columns[index % 2].container(border=True):
-            st.caption(str(node.get("relationship", "Related concept")).upper())
-            st.markdown(f"#### {node.get('topic', 'Related topic')}")
-            if node.get("why_useful"):
-                st.write(node["why_useful"])
-            for source in node.get("sources", []):
-                st.link_button(f"Open {source['name']}", source["url"], use_container_width=True)
-                st.caption(source.get("description", ""))
+    topics = [str(node.get("topic", "Related topic")) for node in nodes]
+    focus_key = "concept_focus_topic"
+    if st.session_state.get(focus_key) not in topics:
+        st.session_state[focus_key] = topics[0]
+    controls = st.columns([4, 1])
+    if controls[1].button("Next link", use_container_width=True, key="next_concept_link"):
+        current_index = topics.index(st.session_state.get(focus_key, topics[0]))
+        st.session_state[focus_key] = topics[(current_index + 1) % len(topics)]
+    focus_topic = controls[0].selectbox("Focus on one connection", topics, key=focus_key)
+    focus_node = next(node for node in nodes if str(node.get("topic")) == focus_topic)
+
+    detail, action = st.columns([3, 2])
+    with detail.container(border=True):
+        kind = str(focus_node.get("relationship_kind", "related concept"))
+        st.caption(role_names.get(kind, kind.title()).upper())
+        st.markdown(f"#### {focus_topic}")
+        st.write(focus_node.get("why_useful") or "This topic broadens the current lesson.")
+        st.info(f"Quick challenge: {focus_node.get('challenge', 'Explain the connection in your own words.')}")
+    with action.container(border=True):
+        st.markdown("#### Study this topic")
+        for source in focus_node.get("sources", []):
+            st.link_button(source["name"], source["url"], use_container_width=True)
+        mastery_key = f"concept_mastered::{concept_map.get('center')}::{focus_topic}"
+        st.toggle("I can explain this link", key=mastery_key)
+
+    completed = sum(
+        bool(st.session_state.get(f"concept_mastered::{concept_map.get('center')}::{topic}"))
+        for topic in topics
+    )
+    st.progress(completed / max(1, len(topics)), text=f"Connections explained: {completed} of {len(topics)}")
+
+    with st.expander("Browse every connection and source"):
+        columns = st.columns(2)
+        for index, node in enumerate(nodes):
+            with columns[index % 2].container(border=True):
+                kind = str(node.get("relationship_kind", "related concept"))
+                st.caption(role_names.get(kind, kind.title()).upper())
+                st.markdown(f"**{node.get('topic', 'Related topic')}**")
+                st.write(node.get("why_useful") or "Builds a broader understanding of this lesson.")
+                for source in node.get("sources", []):
+                    st.markdown(f"[{source['name']}]({source['url']})")
 
 def _show_gate(name: str, result: dict[str, Any] | None) -> None:
     if not result:
