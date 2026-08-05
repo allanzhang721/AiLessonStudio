@@ -13,6 +13,7 @@ import streamlit as st
 from pipeline.clients import build_text_client
 from pipeline.gate_benchmarks import benchmark_rows
 from pipeline.lesson_service import curated_resources, generate_lesson_bundle, research_lesson_sources
+from pipeline.markdown_render import streamlit_markdown
 from pipeline.pipeline import run_pipeline
 from pipeline.quality_gates import review_explanation
 
@@ -262,12 +263,12 @@ def _lesson_tab(bundle: dict[str, Any]) -> None:
 
     with overview:
         st.markdown("### Clear explanation")
-        st.write(bundle["explanation"])
+        st.markdown(streamlit_markdown(bundle["explanation"]))
         if bundle.get("why_it_matters"):
             st.info(f"Why it matters: {bundle['why_it_matters']}")
         st.markdown("#### Key ideas")
         for idea in bundle.get("key_ideas", []):
-            st.markdown(f"<div class='idea'>{idea}</div>", unsafe_allow_html=True)
+            st.markdown(f"- {streamlit_markdown(idea)}")
         if bundle.get("prerequisites"):
             with st.expander("Check the foundations first"):
                 for item in bundle["prerequisites"]:
@@ -275,18 +276,18 @@ def _lesson_tab(bundle: dict[str, Any]) -> None:
 
     with example:
         st.markdown("### Worked example")
-        st.info(bundle.get("worked_example", ""))
+        st.markdown(streamlit_markdown(bundle.get("worked_example", "")))
         st.markdown("### Try it yourself")
-        st.success(bundle.get("quick_check", ""))
+        st.success(streamlit_markdown(bundle.get("quick_check", "")))
         st.caption("Say your reasoning aloud before checking notes; retrieval strengthens memory.")
 
     with mistakes:
         st.markdown("### Common traps and how to repair them")
         if bundle.get("common_mistake"):
-            st.warning(bundle["common_mistake"])
+            st.warning(streamlit_markdown(bundle["common_mistake"]))
         for index, item in enumerate(bundle.get("easy_to_confuse", []), start=1):
             with st.expander(f"{index}. {item['confusion']}", expanded=index == 1):
-                st.markdown(f"**Correction:** {item['correction']}")
+                st.markdown(f"**Correction:** {streamlit_markdown(item['correction'])}")
                 if item.get("memory_tip"):
                     st.info(f"Memory tip: {item['memory_tip']}")
 
@@ -325,7 +326,7 @@ def _research_tab(bundle: dict[str, Any]) -> None:
     if research.get("status") != "ready":
         st.warning("Cited research was not available for this lesson. Use the trusted library tab as a starting point and verify important claims with a teacher or textbook.")
         return
-    st.markdown(research.get("report_markdown", ""))
+    st.markdown(streamlit_markdown(research.get("report_markdown", "")))
     sources = research.get("sources") if isinstance(research.get("sources"), list) else []
     if sources:
         st.divider()
@@ -342,15 +343,15 @@ def _quiz_tab(bundle: dict[str, Any]) -> None:
     for index, item in enumerate(questions):
         st.markdown(f"#### {index + 1}. {item['question']}")
         labels = ["A", "B", "C", "D"]
-        options = [f"{label}. {choice}" for label, choice in zip(labels, item["choices"])]
+        options = [f"{label}. {streamlit_markdown(choice)}" for label, choice in zip(labels, item["choices"])]
         if index not in st.session_state.started_at:
             st.session_state.started_at[index] = time.time()
         selected = st.radio("Choose one", options, index=None, key=f"answer_{index}", label_visibility="collapsed")
         if st.session_state.quiz_submitted:
             if selected and selected[0] == item["answer"]:
-                st.success(f"Correct. {item['explanation']}")
+                st.success("Correct. " + streamlit_markdown(item["explanation"]))
             else:
-                st.error(f"Answer: {item['answer']}. {item['explanation']}")
+                st.error(f"Answer: {item['answer']}. " + streamlit_markdown(item["explanation"]))
     if st.button("Check answers", type="primary", use_container_width=True):
         st.session_state.quiz_submitted = True
         st.rerun()

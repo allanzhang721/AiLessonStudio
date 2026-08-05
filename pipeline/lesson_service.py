@@ -7,6 +7,7 @@ import re
 from typing import Any
 
 from .clients import chat_completion
+from .markdown_render import preserve_markdown
 
 
 def _extract_json(text: str) -> dict[str, Any]:
@@ -79,7 +80,7 @@ def _normalize_quiz(value: Any) -> list[dict[str, Any]]:
 
 
 def normalize_lesson_bundle(value: dict[str, Any]) -> dict[str, Any]:
-    explanation = _clean_text(value.get("explanation"))
+    explanation = preserve_markdown(value.get("explanation"))
     if len(explanation.split()) < 60:
         raise ValueError("The generated explanation was too short to teach the concept.")
     quiz = _normalize_quiz(value.get("quiz"))
@@ -90,7 +91,7 @@ def normalize_lesson_bundle(value: dict[str, Any]) -> dict[str, Any]:
         "learning_objective": _clean_text(value.get("learning_objective"), 400),
         "explanation": explanation,
         "key_ideas": _clean_list(value.get("key_ideas"), limit=5, maximum=400),
-        "worked_example": _clean_text(value.get("worked_example"), 1400),
+        "worked_example": preserve_markdown(value.get("worked_example"), 1400),
         "common_mistake": _clean_text(value.get("common_mistake"), 600),
         "quick_check": _clean_text(value.get("quick_check"), 500),
         "why_it_matters": _clean_text(value.get("why_it_matters"), 800),
@@ -120,6 +121,9 @@ connections, study_path, follow_up_questions, and quiz.
 
 Requirements:
 - explanation: 140-280 words with causal steps, definitions, conditions, and no fluff.
+- explanation and worked_example: use short Markdown paragraphs. Put inline math in
+  `$...$` and display equations in `$$...$$`. Never use `\\(...\\)`, `\\[...\\]`,
+  raw undelimited LaTeX, HTML, or fenced code blocks.
 - key_ideas: 4-5 concise strings.
 - prerequisites: 2-4 ideas the student should already know.
 - easy_to_confuse: 3-4 objects with confusion, correction, and memory_tip.
@@ -143,7 +147,7 @@ def _field(value: Any, name: str, default: Any = None) -> Any:
 
 def _cited_markdown(response: Any) -> tuple[str, list[dict[str, str]]]:
     """Convert Responses API URL annotations into visible Markdown links."""
-    fallback_text = _clean_text(_field(response, "output_text", ""), 16000)
+    fallback_text = preserve_markdown(_field(response, "output_text", ""), 16000)
     text = ""
     annotations: list[Any] = []
     for item in _field(response, "output", []) or []:
@@ -209,6 +213,8 @@ For every source, give its name, what it supports, 2-3 student-friendly key
 points, and one limitation or scope note. Cite that source in its own subsection.
 ## Evidence limits
 State uncertainty, simplifications, or what the sources do not establish.
+Use Markdown headings and lists. Format math only as `$...$` or `$$...$$`; do not
+use raw undelimited LaTeX or fenced code blocks.
 
 Every factual section must use inline citations returned by web search. Do not
 invent URLs or bibliography entries."""
