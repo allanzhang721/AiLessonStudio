@@ -1,4 +1,4 @@
-"""Production Streamlit interface for VisualLesson AI."""
+"""Production Streamlit interface for Explain It!."""
 
 from __future__ import annotations
 
@@ -759,7 +759,7 @@ def _quality_report() -> None:
     st.caption("A passed automated gate reduces risk but is not a substitute for teacher review in high-stakes instruction.")
 
 def main() -> None:
-    st.set_page_config(page_title="VisualLesson AI", page_icon=":material/school:", layout="wide")
+    st.set_page_config(page_title="Explain It!", page_icon=":material/lightbulb:", layout="wide")
     _init_state()
     _styles()
 
@@ -896,7 +896,7 @@ def main() -> None:
                 )
             st.caption("Your API keys stay in this Streamlit session. They are never written to files, logs, or environment variables.")
 
-    st.markdown("<div class='hero'><h1>VisualLesson AI</h1><p>Clear explanations, visual stories, and feedback built for high-school learners.</p></div>", unsafe_allow_html=True)
+    st.markdown("<div class='hero'><h1>Explain It!</h1><p>Ask anything. See it clearly.</p></div>", unsafe_allow_html=True)
     bundle = st.session_state.bundle
     if not bundle:
         st.info("Connect your API providers and ask a question in the sidebar to create a lesson.")

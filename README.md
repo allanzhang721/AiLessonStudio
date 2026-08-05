@@ -1,6 +1,8 @@
-# VisualLesson AI
+# Explain It!
 
-VisualLesson AI turns a high-school student's question into a checked explanation, a seven-scene visual lesson, a narrated 1080p MP4, practice questions, and a focused review report.
+**Ask anything. See it clearly.**
+
+Explain It! turns a high-school student's question into a checked explanation, a seven-scene visual lesson, a narrated 1080p MP4, practice questions, and a focused review report.
 
 The application uses one media workflow only:
 
@@ -15,6 +17,8 @@ The application uses one media workflow only:
 ## Public app
 
 https://teachhighschool.streamlit.app/
+
+White paper: [Explain It! Technical Product White Paper](docs/whitepaper/Explain_It_White_Paper.pdf)
 
 The hosted app asks each visitor for the required API credentials. Keys remain in the active Streamlit session and are not written to files, logs, or environment variables.
 
