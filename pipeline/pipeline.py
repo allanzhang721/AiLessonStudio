@@ -36,7 +36,7 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 from .quality_gates import review_explanation
 from .clients import build_text_client, build_image_client, build_tts_client
@@ -91,6 +91,7 @@ def run_pipeline(
     api_key: Optional[str] = None,
     tts_api_key: Optional[str] = None,
     tts_voice: str = "marin",
+    gate2_callback: Optional[Callable[[dict], None]] = None,
 ) -> dict:
     """
     End-to-end pipeline:
@@ -194,6 +195,8 @@ def run_pipeline(
                 "per_frame": [],
             }
         stage_times["checker2_seconds"] = round(time.time() - t_checker2, 3)
+        if gate2_callback is not None and checker2_result is not None:
+            gate2_callback(checker2_result)
 
     t_gif = time.time()
     gif_path = make_gif(frames, out_dir / "storyboard.gif", fps=1.0)
