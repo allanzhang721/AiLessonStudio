@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 from typing import Any
+from urllib.parse import quote_plus
 
 from .clients import chat_completion
 from .markdown_render import preserve_markdown
@@ -56,6 +57,27 @@ def _normalize_misconceptions(value: Any) -> list[dict[str, str]]:
     return result
 
 
+def _normalize_related_topics(value: Any, fallback: Any = None) -> list[dict[str, str]]:
+    """Normalize a small concept neighborhood without trusting model URLs."""
+    result: list[dict[str, str]] = []
+    if isinstance(value, list):
+        for item in value[:6]:
+            if not isinstance(item, dict):
+                continue
+            topic = _clean_text(item.get("topic"), 100)
+            if topic:
+                result.append({
+                    "topic": topic,
+                    "relationship": _clean_text(item.get("relationship"), 80) or "related concept",
+                    "why_useful": _clean_text(item.get("why_useful"), 300),
+                })
+    if not result and isinstance(fallback, list):
+        for item in fallback[:5]:
+            topic = _clean_text(item, 100)
+            if topic:
+                result.append({"topic": topic, "relationship": "related concept", "why_useful": "Builds a broader understanding of the current lesson."})
+    return result
+
 def _normalize_quiz(value: Any) -> list[dict[str, Any]]:
     if not isinstance(value, list):
         return []
@@ -84,6 +106,7 @@ def normalize_lesson_bundle(value: dict[str, Any]) -> dict[str, Any]:
     if len(explanation.split()) < 60:
         raise ValueError("The generated explanation was too short to teach the concept.")
     quiz = _normalize_quiz(value.get("quiz"))
+    related_topics = _normalize_related_topics(value.get("related_topics"), value.get("connections"))
     if len(quiz) < 3:
         raise ValueError("The model did not return at least three valid quiz questions.")
     return {
@@ -98,6 +121,7 @@ def normalize_lesson_bundle(value: dict[str, Any]) -> dict[str, Any]:
         "prerequisites": _clean_list(value.get("prerequisites"), limit=4, maximum=300),
         "easy_to_confuse": _normalize_misconceptions(value.get("easy_to_confuse")),
         "connections": _clean_list(value.get("connections"), limit=4, maximum=500),
+        "related_topics": related_topics,
         "study_path": _clean_list(value.get("study_path"), limit=4, maximum=400),
         "follow_up_questions": _clean_list(value.get("follow_up_questions"), limit=4, maximum=400),
         "quiz": quiz,
@@ -117,7 +141,7 @@ Question: {question}
 Return one valid JSON object only with these keys:
 title, learning_objective, explanation, key_ideas, worked_example,
 common_mistake, quick_check, why_it_matters, prerequisites, easy_to_confuse,
-connections, study_path, follow_up_questions, and quiz.
+connections, related_topics, study_path, follow_up_questions, and quiz.
 
 Requirements:
 - explanation: 140-280 words with causal steps, definitions, conditions, and no fluff.
@@ -128,6 +152,8 @@ Requirements:
 - prerequisites: 2-4 ideas the student should already know.
 - easy_to_confuse: 3-4 objects with confusion, correction, and memory_tip.
 - connections: 2-4 links to real life, another subject, or a larger concept.
+- related_topics: exactly 5 objects with topic (a short concept name), relationship
+  (prerequisite, application, contrast, or next step), and why_useful. Do not include URLs.
 - study_path: 3-4 concrete actions in the best learning order.
 - follow_up_questions: 3-4 curiosity-building questions.
 - quiz: exactly 5 objects, each with question, choices (four strings), answer
@@ -275,3 +301,39 @@ def curated_resources(subject: str, question: str) -> list[dict[str, str]]:
     else:
         resources.append({"name": "OpenStax", "url": "https://openstax.org/subjects", "description": "Free peer-reviewed textbooks across major high-school subjects."})
     return resources
+
+
+def related_topic_resources(subject: str, topic: str) -> list[dict[str, str]]:
+    """Return trustworthy, stable study links for one concept-map node."""
+    query = quote_plus(f"{subject} {topic}".strip())
+    resources = [{
+        "name": "Khan Academy search",
+        "url": f"https://www.khanacademy.org/search?page_search_query={query}",
+        "description": f"Lessons and practice related to {topic}.",
+    }]
+    text = f"{subject} {topic}".lower()
+    if any(word in text for word in ("physics", "force", "motion", "energy", "circuit", "wave")):
+        resources.append({"name": "OpenStax Physics", "url": "https://openstax.org/details/books/physics", "description": "Peer-reviewed high-school physics chapters."})
+    elif any(word in text for word in ("biology", "cell", "ecology", "genetic", "evolution")):
+        resources.append({"name": "OpenStax Biology 2e", "url": "https://openstax.org/details/books/biology-2e", "description": "Peer-reviewed biology explanations and figures."})
+    elif any(word in text for word in ("chemistry", "atom", "molecule", "reaction", "bond", "acid")):
+        resources.append({"name": "OpenStax Chemistry 2e", "url": "https://openstax.org/details/books/chemistry-2e", "description": "Peer-reviewed chemistry chapters and examples."})
+    elif any(word in text for word in ("math", "algebra", "geometry", "calculus", "function", "probability")):
+        resources.append({"name": "GeoGebra resources", "url": f"https://www.geogebra.org/search/{quote_plus(topic)}", "description": "Interactive mathematical models for this concept."})
+    elif any(word in text for word in ("computer", "code", "algorithm", "program", "data")):
+        resources.append({"name": "MDN learning search", "url": f"https://developer.mozilla.org/en-US/search?q={quote_plus(topic)}", "description": "Reliable computing explanations and examples."})
+    else:
+        resources.append({"name": "OpenStax subjects", "url": "https://openstax.org/subjects", "description": "Peer-reviewed open textbooks across subjects."})
+    return resources
+
+
+def build_concept_map(bundle: dict[str, Any], subject: str) -> dict[str, Any]:
+    """Attach curated sources to model-proposed conceptual relationships."""
+    topics = _normalize_related_topics(bundle.get("related_topics"), bundle.get("connections"))
+    return {
+        "center": _clean_text(bundle.get("title"), 140) or "Current lesson",
+        "nodes": [
+            {**item, "sources": related_topic_resources(subject, item["topic"])}
+            for item in topics[:6]
+        ],
+    }

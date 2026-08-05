@@ -1,7 +1,14 @@
 import json
 import unittest
 
-from pipeline.lesson_service import _cited_markdown, curated_resources, normalize_lesson_bundle, research_lesson_sources
+from pipeline.lesson_service import (
+    _cited_markdown,
+    build_concept_map,
+    curated_resources,
+    normalize_lesson_bundle,
+    related_topic_resources,
+    research_lesson_sources,
+)
 from pipeline.quality_gates import local_explanation_review, review_explanation
 from pipeline.markdown_render import preserve_markdown, streamlit_markdown
 
@@ -59,6 +66,19 @@ class ProductionQualityTests(unittest.TestCase):
         self.assertEqual(result["easy_to_confuse"][0]["memory_tip"], "Force means change.")
         self.assertEqual(len(result["study_path"]), 2)
 
+    def test_concept_map_attaches_trusted_sources_to_every_node(self):
+        value = self._bundle()
+        value["related_topics"] = [
+            {"topic": "Momentum", "relationship": "next step", "why_useful": "Connects force over time.", "url": "https://invented.invalid"},
+            {"topic": "Energy", "relationship": "contrast", "why_useful": "Compares two ways to study motion."},
+        ]
+        bundle = normalize_lesson_bundle(value)
+        concept_map = build_concept_map(bundle, "Physics")
+        self.assertEqual(len(concept_map["nodes"]), 2)
+        self.assertTrue(all(node["sources"] for node in concept_map["nodes"]))
+        self.assertTrue(all(source["url"].startswith("https://") for node in concept_map["nodes"] for source in node["sources"]))
+        self.assertNotIn("invented.invalid", json.dumps(concept_map))
+        self.assertIn("Momentum", related_topic_resources("Physics", "Momentum")[0]["url"])
     def test_curated_resources_are_real_fixed_urls(self):
         resources = curated_resources("Physics", "Why does force accelerate mass?")
         self.assertTrue(any(item["name"] == "PhET" for item in resources))
