@@ -114,6 +114,7 @@ class VideoQualityTests(unittest.TestCase):
         self.assertIn("Text provider", labels)
         self.assertIn("Image provider", labels)
         self.assertIn("Teaching voice", labels)
+        self.assertIn("Add cited web research", [item.label for item in app.toggle])
         self.assertFalse(any("Demo" in item.label for item in app.button))
 
 
