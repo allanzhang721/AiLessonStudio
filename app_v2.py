@@ -11,7 +11,7 @@ from typing import Any
 import streamlit as st
 
 from pipeline.clients import build_text_client
-from pipeline.lesson_service import curated_resources, generate_lesson_bundle
+from pipeline.lesson_service import curated_resources, generate_lesson_bundle, research_lesson_sources
 from pipeline.pipeline import run_pipeline
 from pipeline.quality_gates import review_explanation
 
@@ -126,6 +126,8 @@ def _create_lesson(
     create_video: bool,
     narration_key: str,
     narration_voice: str,
+    research_enabled: bool,
+    research_key: str,
 ) -> None:
     if not question.strip():
         st.error("Enter a question first.")
@@ -170,12 +172,15 @@ def _create_lesson(
                 max_repairs=1,
             )
             bundle["explanation"] = gate1["final_explanation"]
+            bundle["research"] = {"status": "disabled", "report_markdown": "", "sources": []}
+
             bundle["generation"] = {
                 "text_provider": text_provider,
                 "text_model": text_model,
                 "image_provider": image_provider if create_video else None,
                 "image_model": image_model if create_video else None,
                 "narration_voice": narration_voice if create_video else None,
+                "cited_web_research": research_enabled,
             }
             st.session_state.bundle = bundle
             st.session_state.gate1 = gate1
@@ -184,8 +189,19 @@ def _create_lesson(
 
             if not gate1["pass"]:
                 status.update(label="Lesson needs review", state="error")
-                st.error("Gate 1 could not verify this explanation. Media generation was stopped before image costs were incurred.")
+                st.error("Gate 1 could not verify this explanation. No research or media costs were incurred.")
                 return
+
+            if research_enabled:
+                status.write("Searching reliable sources and building cited notes...")
+                research_client = client if text_provider == "openai" else build_text_client("openai", api_key=research_key)
+                bundle["research"] = research_lesson_sources(
+                    research_client,
+                    question=question,
+                    subject=subject,
+                    grade=grade,
+                    language=language,
+                )
 
             if create_video:
                 status.write(f"Illustrating seven steps with {image_provider}: {image_model}...")
@@ -236,20 +252,51 @@ def _show_gate(name: str, result: dict[str, Any] | None) -> None:
 
 def _lesson_tab(bundle: dict[str, Any]) -> None:
     st.markdown(f"<div class='card'><div class='eyebrow'>Learning objective</div><h2>{bundle['title']}</h2><p>{bundle['learning_objective']}</p></div>", unsafe_allow_html=True)
-    st.markdown("### Explanation")
-    st.write(bundle["explanation"])
-    left, right = st.columns([1.25, 1])
-    with left:
+    overview, example, mistakes, explore = st.tabs(["Understand", "Worked example", "Easy to get wrong", "Connect & study"])
+
+    with overview:
+        st.markdown("### Clear explanation")
+        st.write(bundle["explanation"])
+        if bundle.get("why_it_matters"):
+            st.info(f"Why it matters: {bundle['why_it_matters']}")
         st.markdown("#### Key ideas")
         for idea in bundle.get("key_ideas", []):
             st.markdown(f"<div class='idea'>{idea}</div>", unsafe_allow_html=True)
-        st.markdown("#### Worked example")
+        if bundle.get("prerequisites"):
+            with st.expander("Check the foundations first"):
+                for item in bundle["prerequisites"]:
+                    st.markdown(f"- {item}")
+
+    with example:
+        st.markdown("### Worked example")
         st.info(bundle.get("worked_example", ""))
-    with right:
-        st.markdown("#### Watch out")
-        st.warning(bundle.get("common_mistake", ""))
-        st.markdown("#### Quick check")
+        st.markdown("### Try it yourself")
         st.success(bundle.get("quick_check", ""))
+        st.caption("Say your reasoning aloud before checking notes; retrieval strengthens memory.")
+
+    with mistakes:
+        st.markdown("### Common traps and how to repair them")
+        if bundle.get("common_mistake"):
+            st.warning(bundle["common_mistake"])
+        for index, item in enumerate(bundle.get("easy_to_confuse", []), start=1):
+            with st.expander(f"{index}. {item['confusion']}", expanded=index == 1):
+                st.markdown(f"**Correction:** {item['correction']}")
+                if item.get("memory_tip"):
+                    st.info(f"Memory tip: {item['memory_tip']}")
+
+    with explore:
+        left, right = st.columns(2)
+        with left:
+            st.markdown("### Useful connections")
+            for item in bundle.get("connections", []):
+                st.markdown(f"- {item}")
+            st.markdown("### Questions to explore next")
+            for item in bundle.get("follow_up_questions", []):
+                st.markdown(f"- {item}")
+        with right:
+            st.markdown("### Short study path")
+            for index, item in enumerate(bundle.get("study_path", []), start=1):
+                st.markdown(f"**{index}.** {item}")
 
     result = st.session_state.pipeline_result
     if result:
@@ -264,6 +311,25 @@ def _lesson_tab(bundle: dict[str, Any]) -> None:
             st.markdown("### Narrated lesson video")
             st.video(str(video))
 
+
+def _research_tab(bundle: dict[str, Any]) -> None:
+    st.markdown("### Evidence and source notes")
+    st.caption("Web-grounded notes are generated separately from the lesson draft. Open the citations and compare what each source actually supports.")
+    research = bundle.get("research") if isinstance(bundle.get("research"), dict) else {}
+    if research.get("status") != "ready":
+        st.warning("Cited research was not available for this lesson. Use the trusted library tab as a starting point and verify important claims with a teacher or textbook.")
+        return
+    st.markdown(research.get("report_markdown", ""))
+    sources = research.get("sources") if isinstance(research.get("sources"), list) else []
+    if sources:
+        st.divider()
+        st.markdown("### Sources used")
+        for index, source in enumerate(sources, start=1):
+            title = source.get("title", "Source")
+            url = source.get("url", "")
+            if url.startswith(("https://", "http://")):
+                st.markdown(f"{index}. [{title}]({url})")
+        st.caption("A citation shows where a claim came from; it does not guarantee that every source is correct or that the lesson covers every viewpoint.")
 
 def _quiz_tab(bundle: dict[str, Any]) -> None:
     questions = bundle.get("quiz", [])
@@ -342,6 +408,20 @@ def main() -> None:
                 help=text_config["key_help"],
                 placeholder="Paste your key - session only",
             )
+            research_enabled = st.toggle(
+                "Add cited web research",
+                value=True,
+                help="Searches reliable sources and adds clickable citations. Web search has an additional API cost.",
+            )
+            research_key = text_key if text_label == "OpenAI" else ""
+            if research_enabled and text_label != "OpenAI":
+                research_key = st.text_input(
+                    "OpenAI research API key",
+                    type="password",
+                    key="visitor_research_api_key",
+                    help="DeepSeek can still write the lesson; this key is used only for grounded web search.",
+                    placeholder="Required for cited research",
+                )
 
             create_video = st.toggle(
                 "Create illustrated MP4",
@@ -396,9 +476,10 @@ def main() -> None:
                     )
                 st.caption("The narration voice is AI-generated, not a human recording.")
 
-            keys_ready = bool(text_key.strip()) and (
-                not create_video
-                or (bool(image_key.strip()) and bool(narration_key.strip()))
+            keys_ready = (
+                bool(text_key.strip())
+                and (not research_enabled or bool(research_key.strip()))
+                and (not create_video or (bool(image_key.strip()) and bool(narration_key.strip())))
             )
             if keys_ready:
                 st.success("API setup ready")
@@ -436,6 +517,8 @@ def main() -> None:
                     create_video=create_video,
                     narration_key=narration_key,
                     narration_voice=narration_voice,
+                    research_enabled=research_enabled,
+                    research_key=research_key,
                 )
             st.caption("Keys stay in this Streamlit session. They are never written to files, logs, or environment variables.")
 
@@ -457,9 +540,11 @@ def main() -> None:
         result = st.session_state.pipeline_result
         _show_gate("Gate 2 - visuals", result.get("checker2_result") if result else None)
 
-    lesson, quiz, resources, quality = st.tabs(["Lesson", "Practice", "Resources", "Quality report"])
+    lesson, evidence, quiz, resources, quality = st.tabs(["Lesson", "Evidence & sources", "Practice", "Learning library", "Quality report"])
     with lesson:
         _lesson_tab(bundle)
+    with evidence:
+        _research_tab(bundle)
     with quiz:
         _quiz_tab(bundle)
     with resources:

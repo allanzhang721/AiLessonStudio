@@ -38,6 +38,11 @@ Narration:
 
 The interface clearly discloses that narration is AI-generated.
 
+## Layered explanations and cited research
+
+Each lesson separates understanding into focused panels: core explanation, worked example, easy-to-confuse ideas with corrections and memory tips, prerequisites, real-world connections, a short study path, and follow-up questions.
+
+Optional cited research uses OpenAI Responses API web search as a separate grounded stage. It prioritizes government, university, museum, standards, peer-reviewed, and established textbook sources; displays source-by-source notes; converts URL annotations into clickable inline citations; and states evidence limitations. OpenAI text users reuse their text key. DeepSeek text users can provide a separate OpenAI key used only for research. Web search has an additional API cost and can be disabled.
 ## Video quality
 
 - 1920 x 1080 output
