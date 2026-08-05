@@ -133,6 +133,24 @@ class ProductionQualityTests(unittest.TestCase):
         self.assertEqual(client.responses.kwargs["tool_choice"], "required")
         self.assertEqual(client.responses.kwargs["tools"][0]["type"], "web_search")
         self.assertTrue(result["sources"])
+    def test_deepseek_research_does_not_request_an_openai_key_or_unsupported_search(self):
+        class NeverCallResponses:
+            def create(self, **kwargs):
+                raise AssertionError("DeepSeek should not receive an OpenAI Responses web-search call")
+
+        class Client:
+            responses = NeverCallResponses()
+
+        result = research_lesson_sources(
+            Client(),
+            question="What is gravity?",
+            subject="Physics",
+            grade=10,
+            model="deepseek-chat",
+        )
+        self.assertEqual(result["status"], "unavailable")
+        self.assertEqual(result["reason"], "selected_text_provider_has_no_grounded_web_search")
+
     def test_local_gate_rejects_thin_answer(self):
         result = local_explanation_review("Why does gravity act?", "Because it does.", 10, "Physics")
         self.assertFalse(result["pass"])

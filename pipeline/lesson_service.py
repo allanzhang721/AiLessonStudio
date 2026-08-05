@@ -221,6 +221,13 @@ def research_lesson_sources(
     """Run grounded web research and preserve clickable source annotations."""
     if client is None or not hasattr(client, "responses"):
         return {"status": "unavailable", "report_markdown": "", "sources": []}
+    if model.startswith("deepseek-"):
+        return {
+            "status": "unavailable",
+            "reason": "selected_text_provider_has_no_grounded_web_search",
+            "report_markdown": "",
+            "sources": [],
+        }
     prompt = f"""Research this high-school lesson question using 3-5 trustworthy sources.
 Question: {question}
 Subject: {subject}
