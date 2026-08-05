@@ -20,9 +20,6 @@ Run: python -m pip install -r requirements.txt
 Then: python -m pytest -q
 Then: python -m streamlit run streamlit_app.py
 
-Research-only dependencies are intentionally isolated in
-requirements-research.txt; they are not needed by the website.
-
 ## Security and cost
 
 - api_keys.txt and .streamlit/secrets.toml are ignored by Git.
