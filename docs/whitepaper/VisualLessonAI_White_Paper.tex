@@ -1,7 +1,7 @@
 \documentclass[11pt]{article}
 
 \usepackage[margin=0.82in]{geometry}
-\usepackage{amsmath,amssymb,mathtools}
+\usepackage{amsmath,amssymb,mathtools,amsthm}
 \usepackage{booktabs,tabularx,longtable,array,multirow}
 \usepackage{enumitem,graphicx,float,subcaption}
 \usepackage{xcolor,hyperref,fancyhdr,microtype}
@@ -36,9 +36,15 @@
 \newcommand{\clip}{\operatorname{clip}_{[0,1]}}
 \newcommand{\stagebox}[1]{\tikz[baseline=(n.base)]\node[draw=navy,rounded corners=2pt,fill=soft,inner sep=3pt](n){\scriptsize\bfseries #1};}
 \newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\theoremstyle{plain}
+\newtheorem{proposition}{Proposition}[section]
+\newtheorem{theorem}[proposition]{Theorem}
+\theoremstyle{definition}
+\newtheorem{workedexample}[proposition]{Worked example}
+\newtheorem{designrule}[proposition]{Design rule}
 \lstset{basicstyle=\ttfamily\small,backgroundcolor=\color{pale},frame=single,rulecolor=\color{navy!25},breaklines=true,columns=fullflexible,showstringspaces=false}
 
-\title{\textbf{VisualLesson AI}\\[0.35em]\large Why We Generate, Check, and Compose High-School Lessons in Stages\\[0.75em]\normalsize Technical Product White Paper, Version 2.0}
+\title{\textbf{VisualLesson AI}\\[0.35em]\large Why We Generate, Check, and Compose High-School Lessons in Stages\\[0.75em]\normalsize Technical Product White Paper, Version 3.0}
 \author{Meiyu Shen \and Yifan Yan \and Jiachen Yu\\Jiaxing Senior High School (BC Offshore Program)}
 \date{August 2026}
 
@@ -48,7 +54,7 @@
 \begin{abstract}
 We present \product, a deployable lesson studio that turns a Grades 9--12 question into a structured explanation, source-grounded notes, a quiz, a connected concept map, and an optional narrated video. We ask a practical design question: if generation is probabilistic and media calls are expensive, where should a small educational system check its work? We answer with a staged pipeline. Gate 1 screens the explanation before research and media spending. Gate 2 checks seven image frames with parallel pixel diagnostics and, only when those checks pass, one semantic contact-sheet review. We generate video by composing inspected still images, captions, transitions, and narration rather than by calling a direct text-to-video model. The design follows established ideas from multimedia learning, cognitive-load research, retrieval practice, feedback research, and risk-based AI evaluation, while remaining explicit that automated gates do not prove factual correctness \citep{mayer2009multimedia,sweller1988,roediger2006,hattie2007,nist2024airmf}.
 
-This paper documents the complete system as implemented in August 2026. We give accessible explanations in the main text and place the score equations, threshold logic, timing allocation, evaluation metrics, and worked calculations in the appendices. Seven system diagrams show architecture, gate decisions, expected cost, visual sequencing, concept connections, and deployment. We also separate offline checker experiments from live production behavior. The application is available at \url{https://teachhighschool.streamlit.app/}; source code is available at \url{https://github.com/allanzhang721/AiLessonStudio}.
+This Version 3.0 paper documents the deployed system through commit \code{16bfde7}. It includes the optional OpenAI media key shown when DeepSeek is selected for text, the directional and interactive concept neighborhood, live per-frame progress, and stage-aware study tips. We derive the gate equations using high-school algebra, probability, weighted averages, inequalities, and directed graphs. Proofs establish what the formulas do guarantee---bounded scores, noncompensatory accuracy, all-frame enforcement, expected-cost ordering, parallel-time bounds, conserved scene duration, and monotone progress---and state what they cannot guarantee. The application is available at \url{https://teachhighschool.streamlit.app/}; source code is available at \url{https://github.com/allanzhang721/AiLessonStudio}.
 \end{abstract}
 
 \section{Introduction}
@@ -59,14 +65,16 @@ We built \product\ around this tension. We do not ask one model call to write an
 
 The uploaded SLaTR manuscript influenced our writing habits: we begin from the uncertainty, define each object before using it, explain the mechanism next to the corresponding diagram, and use ``we'' when describing choices made by the project team. We do not reproduce its technical claims or wording. This document is a project white paper rather than a peer-reviewed research article.
 
-We make six contributions:
+We make eight contributions:
 \begin{enumerate}
   \item We provide a complete public application rather than a notebook-only prototype.
-  \item We use one provider selection and one visible API-key field. An OpenAI key can serve text, grounded research, images, and narration; DeepSeek is presented honestly as a text-only path in the current product.
+  \item We separate text capability from media capability. OpenAI can reuse one key for both; DeepSeek remains text-only but can be paired, only when the learner chooses, with a separate OpenAI image-and-narration key.
   \item We implement a local-first Gate 1 that combines transparent structural checks with a compact five-dimension semantic rubric and at most one repair.
   \item We implement a local-first Gate 2 that checks seven frames in parallel and makes at most one semantic vision call.
   \item We compose video from approved still frames and audio, which makes every teaching step observable and regenerable.
   \item We expose evidence, misconceptions, practice, quality records, and related-topic sources instead of returning one uninterrupted block of generated text.
+  \item We turn the concept map into a directional study tool with relationship filters, focused-topic navigation, challenges, curated links, and self-reported connection progress.
+  \item We expose honest stage and per-frame progress together with short retrieval, source-checking, diagram-reading, and study tips during long calls.
 \end{enumerate}
 
 \section{Scope, Claims, and Intended Use}
@@ -113,9 +121,9 @@ Large language models create opportunities for education but also introduce fact
 
 Let a request be
 \begin{equation}
-  x=(q,s,g,\ell,p,m,k),
+  x=(q,s,g,\ell,p_T,m_T,k_T,p_I,m_I,k_I,u),
 \end{equation}
-where $q$ is the question, $s$ the subject, $g$ the grade, $\ell$ the language, $p$ the provider, $m$ the selected model, and $k$ the session-only API key. The output is a lesson bundle
+where $q$ is the question, $s$ the subject, $g$ the grade, $\ell$ the language, $(p_T,m_T,k_T)$ the text provider, model, and session key, $(p_I,m_I,k_I)$ the optional media configuration, and $u$ the user options such as research and video. When OpenAI supplies text, $k_I=k_T$; when DeepSeek supplies text, $k_I$ is empty unless the learner explicitly opens the optional media connection. The output is a lesson bundle
 \begin{equation}
   y=(e,r,z,G,F,a,v,h),
 \end{equation}
@@ -129,7 +137,7 @@ where $e$ is the approved explanation, $r$ the research report, $z$ the quiz, $G
  gate/.style={diamond,draw=amber!85!black,fill=amber!12,aspect=2.0,align=center,font=\small},
  arrow/.style={-{Latex[length=2mm]},thick,draw=navy}
 ]
-\node[box] (input) {Question\\grade, subject\\one provider key};
+\node[box] (input) {Question\\grade, subject\\text key + optional media key};
 \node[box,right=of input] (draft) {Structured\\lesson draft};
 \node[gate,right=of draft] (g1) {Gate 1};
 \node[box,right=of g1] (evidence) {Sources, quiz,\\concept map};
@@ -179,6 +187,30 @@ The equation uses multiplication for a simple reason: the video stage is reached
 
 The cascade also improves diagnosis. A local readability warning, a factual rubric failure, a dark frame, and a sequence-continuity problem should not all appear as ``generation failed.'' Each belongs to a different stage and suggests a different correction.
 
+\section{Mathematical Design Questions}
+
+The project uses mathematics as a design language, not as decoration. Each formula answers a practical question that a high-school student can follow:
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\linewidth}{@{}p{0.32\linewidth}Y p{0.19\linewidth}@{}}
+\toprule
+\textbf{Question} & \textbf{Mathematical conclusion} & \textbf{Detailed proof} \\
+\midrule
+Can a weighted score leave the interval $[0,1]$? & No, when every component is in $[0,1]$, weights are nonnegative, and weights sum to one. & Proposition~\ref{prop:convex} \\
+Can a high average hide a serious factual weakness? & Yes. A mandatory accuracy rule is therefore separate from the average. & Proposition~\ref{prop:noncomp} \\
+Why must all seven frames pass? & A mean can hide one weak frame, and the chance of at least one defect rises with the number of frames. & Proposition~\ref{prop:allframe} \\
+Which check should run first? & For two independent screening stages, compare cost per rejection probability, $c/r$. & Theorem~\ref{thm:ordering} \\
+Why process frame diagnostics in parallel? & Parallel time is no greater than sequential time; with equal jobs and four workers, seven jobs need at least two waves. & Proposition~\ref{prop:parallel} \\
+Does timing allocation create or lose duration? & No. The scene-duration formula sums exactly to the chosen total and preserves the per-scene floor. & Proposition~\ref{prop:timing} \\
+\bottomrule
+\end{tabularx}
+\caption{The main mathematical questions behind the production design. The appendices use only algebra, averages, inequalities, elementary probability, and graphs.}
+\label{tab:math-roadmap}
+\end{table}
+
+A proof in this paper establishes a property of the \emph{implemented formula under stated assumptions}. It does not prove that a model response is true, that a student learned, or that a chosen threshold is optimal. Those questions require observations and evaluation data.
 \section{Gate 1: Explanation Review}
 
 \subsection{Local screen}
@@ -321,32 +353,46 @@ The generated bundle is rendered as six views:
 
 Markdown and common LaTeX wrappers are normalized before Streamlit renders them. This prevents a useful equation such as $F=ma$ from appearing as raw control characters. The normalizer preserves paragraphs and lists instead of flattening the lesson into one line.
 
-\subsection{Connected concepts with bounded links}
+\subsection{Useful waiting time rather than an empty spinner}
 
-The text model proposes five short topic connections and classifies each as a prerequisite, application, contrast, or next step. The program discards model-generated URLs. It attaches sources using deterministic subject mappings to platforms such as OpenStax, Khan Academy, GeoGebra, PhET, and MDN.
+Model and image calls can take long enough for a learner to disengage. The deployed interface therefore reports a stage label and a monotone progress fraction. During the seven-frame loop it reports when each illustration starts and finishes. The display does \emph{not} claim to predict seconds remaining; provider queues and retries make such a prediction unreliable.
+
+The same panel shows one short study action selected from a small code-controlled library. Drafting tips ask the learner to predict or recall; gate tips ask about units, assumptions, and counterexamples; research tips ask the learner to compare sources; frame tips ask the learner to follow arrows or explain visual change; composition tips recommend retrieval rather than passive replay. The selector uses only stage, grade, subject text, and frame number. It does not infer emotion, attention, disability, or ability. Appendix~\ref{app:progress} proves that the displayed media progress never moves backward and explains the modulo selector used for tips.
+
+\subsection{Connected concepts as an interactive directed graph}
+
+The text model proposes five short topic connections. The program normalizes each relationship into one of five roles: prerequisite, application, contrast, next step, or related concept. It then discards any model-generated URL and attaches sources using deterministic subject mappings to platforms such as OpenStax, Khan Academy, GeoGebra, PhET, and MDN. This separation is important: the model proposes \emph{what may be related}; code-controlled mappings decide \emph{where a learner may click}.
+
+The current view is not a static star diagram. A horizontal control filters learning roles. A focus selector and a \emph{Next link} button move through topics. The focused topic shows why it matters, trusted links, and a relationship-specific challenge. A learner may mark ``I can explain this link,'' and a progress bar displays the number marked out of the total. This is a self-report and navigation aid, not a mastery diagnosis.
 
 \begin{figure}[H]
 \centering
+\resizebox{0.98\linewidth}{!}{%
 \begin{tikzpicture}[
- node distance=13mm and 20mm,
- core/.style={circle,draw=navy,fill=navy!10,text width=24mm,align=center,minimum size=22mm,font=\small\bfseries},
- topic/.style={rectangle,rounded corners=3pt,draw=teal,fill=soft,text width=27mm,align=center,minimum height=9mm,font=\small},
+ node distance=11mm and 17mm,
+ core/.style={circle,draw=navy,fill=navy,text=white,text width=24mm,align=center,minimum size=22mm,font=\small\bfseries},
+ topic/.style={rectangle,rounded corners=3pt,text width=27mm,align=center,minimum height=9mm,font=\small,thick},
+ panel/.style={rectangle,rounded corners=3pt,draw=navy!35,fill=pale,text width=31mm,align=left,minimum height=18mm,font=\scriptsize},
  edge/.style={-{Latex[length=2mm]},thick}
 ]
 \node[core] (c) {Current\\lesson};
-\node[topic,above left=of c] (p) {Prerequisite\\trusted links};
-\node[topic,above right=of c] (a) {Application\\trusted links};
-\node[topic,below left=of c] (d) {Contrast\\trusted links};
-\node[topic,below right=of c] (n) {Next step\\trusted links};
+\node[topic,draw=blue,fill=blue!9,above left=of c] (p) {Prerequisite\\points inward};
+\node[topic,draw=green,fill=green!9,above right=of c] (a) {Application\\points outward};
+\node[topic,draw=amber,fill=amber!11,below left=of c] (d) {Contrast\\two-way comparison};
+\node[topic,draw=teal,fill=teal!9,below right=of c] (n) {Next step\\points outward};
+\node[panel,right=28mm of a] (focus) {\textbf{Focused topic}\\why useful\\quick challenge\\trusted sources\\self-report toggle};
 \draw[edge,blue] (p)--node[above,sloped,font=\scriptsize]{supports}(c);
 \draw[edge,green] (c)--node[above,sloped,font=\scriptsize]{used in}(a);
-\draw[edge,amber] (c)--node[below,sloped,font=\scriptsize]{distinguish}(d);
+\draw[edge,amber,<->] (c)--node[below,sloped,font=\scriptsize]{compare}(d);
 \draw[edge,teal] (c)--node[below,sloped,font=\scriptsize]{continue}(n);
+\draw[edge,navy!55,dashed] (a)--(focus);
 \end{tikzpicture}
-\caption{Concept neighborhood. The model proposes instructional relationships; code-controlled mappings determine destination domains.}
+}
+\caption{The deployed concept neighborhood encodes learning direction and connects the selected node to an interactive study panel. Filtering changes the displayed subgraph; it does not regenerate the lesson or make another model call.}
 \label{fig:concept}
 \end{figure}
 
+Let the concept graph be $G=(V,E)$, where the current lesson and related topics are vertices and labeled relationships are directed edges. If a learner marks $m$ of $n$ related topics, the displayed self-report progress is $m/n$. Appendix~\ref{app:graph} proves its bounds and shows why adding one completed connection changes the bar by exactly $1/n$.
 \section{Offline Checker Experiments}
 
 The repository contains saved benchmark summaries for the earlier research checkers. Table~\ref{tab:benchmarks} reports the values used by the application's friendly experiment snapshot. Gate 1 and Gate 2 use different datasets and tasks, so their rows must not be ranked against one another.
@@ -411,7 +457,7 @@ python -m pytest -q
 python -m streamlit run streamlit_app.py
 \end{lstlisting}
 
-The app opens even before a key is entered, but generation remains locked. The sidebar shows one provider selector and one password-style key field. With OpenAI, the same key is reused for supported text, grounded research, image, and narration calls. With DeepSeek, the app exposes text generation and disables illustrated video because the current pipeline has no same-provider DeepSeek image and narration path. We do not ask for a second provider credential.
+The app opens before a key is entered, but generation remains locked until the required fields are present. The first password field is always the text key. With OpenAI selected for text, that same key can be reused for research, images, visual review, and narration. With DeepSeek selected, the interface states that DeepSeek is text-only in this application. The learner may stop there and generate a written lesson, or open \emph{Add image API (optional)}. Only then does a second OpenAI image-key field appear; that optional key supplies images, the semantic visual audit, narration, and MP4 composition while DeepSeek continues to write the lesson.
 
 \subsection{Directory map}
 
@@ -434,14 +480,10 @@ requirements-research.txt     # optional experiment dependencies
 
 \subsection{Test protocol}
 
-The deployment suite contains 31 tests at this paper version. It covers frame scoring and short-circuit behavior, explanation repair, provider routing, one-key Streamlit rendering, source annotation conversion, schema normalization, Markdown and LaTeX handling, fail-fast plan validation, student-analysis helpers, narration arguments, audio-aware timing, and real H.264 encoding. The command used for the deployment branch is:
+The repository test discovery contains 39 tests at this paper version. It covers frame scoring and short-circuit behavior, explanation repair, provider routing, the conditional second-key Streamlit flow, concept relationship direction, progress callbacks, waiting-tip selection, source annotation conversion, schema normalization, Markdown and LaTeX handling, fail-fast plan validation, student-analysis helpers, narration arguments, audio-aware timing, and real H.264 encoding. The command used for the deployment branch is:
 
 \begin{lstlisting}[language=bash]
-python -m pytest \
-  tests/test_frame_checker.py tests/test_production_quality.py \
-  tests/test_provider_selection.py tests/test_render_failfast.py \
-  tests/test_video_quality.py tests/test_validation.py \
-  tests/test_student_analyzer.py -q
+python -m unittest discover -s tests -v
 \end{lstlisting}
 
 A passing unit suite establishes that the code meets the tested contracts. It does not establish educational effectiveness. A publication evaluation should additionally include expert factual review, student comprehension measures, accessibility review, cost records, and failure analysis.
@@ -472,7 +514,7 @@ A passing unit suite establishes that the code meets the tested contracts. It do
 \label{fig:deployment}
 \end{figure}
 
-The public deployment uses the \href{https://github.com/allanzhang721/AiLessonStudio}{AiLessonStudio repository}. Its production coordinates are branch \texttt{agent/}\allowbreak\texttt{streamlit-production}, entrypoint \texttt{streamlit\_app.py}, and Python 3.12. Streamlit Community Cloud installs dependencies from the repository and supports configuration of Python and secrets through its deployment settings \citep{streamlitDeploy,streamlitSecrets}. The current visitor flow does not require a repository secret because the visitor provides one session key.
+The public deployment uses the \href{https://github.com/allanzhang721/AiLessonStudio}{AiLessonStudio repository}. Its production coordinates are branch \texttt{agent/}\allowbreak\texttt{streamlit-production}, entrypoint \texttt{streamlit\_app.py}, and Python 3.12. Streamlit Community Cloud installs dependencies from the repository and supports configuration of Python and secrets through its deployment settings \citep{streamlitDeploy,streamlitSecrets}. The current visitor flow does not require a repository secret because the visitor provides a session text key and, only when pairing a text-only provider with media, an optional session image key.
 
 The password-style field reduces accidental display but is not a complete security boundary. The key is passed to the chosen provider client. Students should use restricted keys, set provider-side budgets, avoid entering personal information in prompts, and revoke a key they believe was exposed. School deployments should perform their own privacy, consent, procurement, and retention review.
 
@@ -490,7 +532,7 @@ Table~\ref{tab:provenance} records where each kind of paper evidence comes from.
 Figures~\ref{fig:architecture}--\ref{fig:deployment} & Drawn in TikZ from the production source code and deployment configuration & Explanatory system diagrams; not experimental observations \\
 Figure~\ref{fig:offlineplots} & Repository plotting outputs and saved benchmark values & Offline method comparison on recorded tasks \\
 Table~\ref{tab:benchmarks} & \code{pipeline/gate\_benchmarks.py} & Distilled values used by the public dashboard \\
-Gate equations & \code{quality\_gates.py}, \code{frame\_checker.py}, and \code{video\_pipeline.py} & Exact implementation as of the paper version \\
+Gate, timing, progress, and graph equations & \code{quality\_gates.py}, \code{frame\_checker.py}, \code{pipeline.py}, \code{video\_pipeline.py}, and \code{lesson\_service.py} & Exact implementation or direct algebraic consequence as of the paper version \\
 Learning rationale & Cited books, peer-reviewed articles, and public standards & Motivation for design choices, not a direct evaluation of this app \\
 Setup instructions & Repository files and official Streamlit documentation & Reproducibility and deployment procedure \\
 \bottomrule
@@ -528,151 +570,459 @@ For gate calibration, teachers should label individual failure types and final u
 
 \section{Conclusion}
 
-We built \product\ as a staged lesson studio because generated educational artifacts fail in different ways and because later media stages are costly. Gate 1 checks the explanation before research and images. Gate 2 checks every frame before final composition. The video path keeps seven inspectable images, stable captions, controlled timing, and a recoverable intermediate state. The app adds sources, misconceptions, practice, related concepts, regeneration, and a visible quality report around the generated explanation.
+We built \product\ as a staged lesson studio because generated educational artifacts fail in different ways and because later media stages are costly. Gate 1 checks the explanation before research and images. Gate 2 checks every frame before final composition. The video path keeps seven inspectable images, stable captions, controlled timing, per-frame progress, and a recoverable intermediate state. The current app also supports a DeepSeek text lesson with an optional OpenAI media connection, a directional concept neighborhood with study challenges and self-report progress, cited notes, misconceptions, practice, regeneration, and a visible quality report.
 
 The central lesson is not that more checking guarantees truth. It is that narrow checks, placed at the right boundaries, make failures cheaper to detect and easier to explain. The offline classifiers remain useful comparisons. The live gates remain engineering controls. Teacher and student evaluation remains necessary. Keeping these statements separate makes the project easier to reproduce, criticize, and improve.
 
 \appendix
-\section{Mathematical Appendix: Gate and Timing Equations}
+\section{Mathematical Appendix: Why the Gates Have This Form}
 \label{app:math}
 
-This appendix begins with the required high-school mathematics and then states the implementation exactly.
+This appendix is written for a student who knows percentages, averages, algebra, graphs, and elementary probability. We use proofs to establish properties of the code. We do not use a formula as evidence that the generated lesson is factually correct.
 
-\subsection{A short primer}
+\subsection{Definitions and assumptions}
 
-A \emph{weighted average} is like a course grade in which categories have different importance. If homework counts for 30\% and an exam counts for 70\%, the grade is $0.30H+0.70E$. Our visual score uses the same idea. An \emph{indicator} $\ind{A}$ equals 1 when statement $A$ is true and 0 otherwise. Indicators let us write several pass rules in one equation. A \emph{threshold} is a boundary: a score passes when it is at least the threshold. Thresholds trade false acceptance against false rejection.
-
-\subsection{Gate 1}
-
-Let the five rubric scores be
+A score is \emph{normalized} when it lies between 0 and 1. A normalized score of 0.8 means 80\% of the available score; it does not automatically mean an 80\% probability of correctness. An indicator
 \[
-\mathbf{s}=(s_a,s_c,s_l,s_g,s_r), \qquad s_d\in\{1,2,3,4\},
+\ind{A}=\begin{cases}1,&A\text{ is true},\\0,&A\text{ is false}\end{cases}
 \]
-for accuracy, completeness, logical flow, grade fit, and clarity/readability. The displayed score is
+turns a logical rule into arithmetic. Products of indicators represent ``and'': the product is 1 only when every factor is 1.
+
+Throughout the appendix, weights are nonnegative. Probabilistic examples state when independence is assumed. Costs are illustrative units unless a provider price sheet and date are supplied.
+
+\subsection{Why normalized weighted averages stay normalized}
+
+\begin{proposition}[Convex-score bound]
+\label{prop:convex}
+Let $x_1,\ldots,x_d\in[0,1]$ and let $w_1,\ldots,w_d\ge0$ with $\sum_{j=1}^d w_j=1$. Then
+\[
+S=\sum_{j=1}^d w_jx_j
+\]
+also satisfies $0\le S\le1$.
+\end{proposition}
+
+\begin{proof}
+Because each $w_j$ and $x_j$ is nonnegative, every product $w_jx_j$ is nonnegative, so $S\ge0$. Also $x_j\le1$, hence $w_jx_j\le w_j$. Adding these inequalities gives
+\[
+S=\sum_jw_jx_j\le\sum_jw_j=1.
+\]
+Therefore $S\in[0,1]$.
+\end{proof}
+
+This simple result explains why Gate 2 weights sum to one. It also makes the displayed percentage interpretable without extra clipping after aggregation.
+
+\begin{proposition}[Sensitivity of a weighted score]
+If one component $x_k$ increases by $\Delta$ while all other components stay fixed, then $S$ increases by exactly $w_k\Delta$.
+\end{proposition}
+
+\begin{proof}
+The new score is
+\[
+S'=\sum_{j\ne k}w_jx_j+w_k(x_k+\Delta)=S+w_k\Delta.
+\]
+Subtracting $S$ gives $S'-S=w_k\Delta$.
+\end{proof}
+
+Thus a weight is also a sensitivity coefficient. In Gate 2, a 0.10 improvement in semantic score changes the combined score by $0.65(0.10)=0.065$, whereas the same technical improvement changes it by $0.35(0.10)=0.035$.
+
+\subsection{Gate 1: an average plus mandatory conditions}
+
+Let
+\[
+\mathbf{s}=(s_a,s_c,s_l,s_g,s_r),\qquad s_j\in\{1,2,3,4\},
+\]
+represent accuracy, completeness, logical flow, grade fit, and readability. The displayed score is
 \begin{equation}
 S_1=\frac{s_a+s_c+s_l+s_g+s_r}{20}.
+\label{eq:gate1-score}
 \end{equation}
-Let $J$ be the number of local issues. The exact pass indicator is
+Let $J$ be the number of local structural issues and $b\in\{0,1\}$ the reviewer's explicit decision. The production pass rule is
 \begin{equation}
-P_1=\ind{J=0}\ind{s_a=4}\ind{\min(s_c,s_l,s_g,s_r)\ge 3}\ind{b=1},
+P_1=\ind{J=0}\ind{s_a=4}\ind{\min(s_c,s_l,s_g,s_r)\ge3}\ind{b=1}.
+\label{eq:gate1-pass}
 \end{equation}
-where $b$ is the semantic reviewer's explicit Boolean decision. Requiring both numeric rules and $b=1$ guards against an internally inconsistent response.
 
-\paragraph{Worked example.} Suppose the scores are $(4,3,3,4,3)$. Then
+\begin{proposition}[A high mean cannot protect a mandatory dimension]
+\label{prop:noncomp}
+For the five Gate 1 dimensions, a lesson can score at least 0.95 while failing the required accuracy condition.
+\end{proposition}
+
+\begin{proof}
+Choose $(s_a,s_c,s_l,s_g,s_r)=(3,4,4,4,4)$. Then
 \[
-S_1=\frac{4+3+3+4+3}{20}=\frac{17}{20}=0.85.
+S_1=\frac{3+4+4+4+4}{20}=\frac{19}{20}=0.95.
 \]
-If $J=0$ and $b=1$, the explanation passes. Now suppose the scores are $(3,4,4,4,4)$. The average is $19/20=0.95$, but the explanation fails because accuracy is not 4. This shows why an average alone is not the decision.
+However, $\ind{s_a=4}=0$, so the product in Equation~\eqref{eq:gate1-pass} is zero. The lesson fails even though its mean is high.
+\end{proof}
 
-The maximum semantic call count is
-\begin{equation}
-N_{\mathrm{calls},1}\le 1+R_{\max}=2,
-\end{equation}
-with $R_{\max}=1$. A repair occurs only after a failed first review that supplies a nonempty revision.
+The example is a counterexample to the rule ``accept whenever the average is high.'' It motivates a \emph{noncompensatory} rule: strength in style or completeness cannot cancel a factual weakness.
 
-\subsection{Gate 2 technical score}
+\begin{workedexample}
+Scores $(4,3,3,4,3)$ give $S_1=17/20=0.85$. If $J=0$ and $b=1$, every indicator equals 1 and the explanation passes. If one local issue remains, the first factor becomes zero and the same semantic scores fail.
+\end{workedexample}
 
-Define the clipping function
+The review makes one initial semantic call. It permits at most one revised call, so
 \begin{equation}
-\clip(x)=\max(0,\min(1,x))
+N_{1}=1+\ind{\text{first review fails and returns a revision}}\le2.
 \end{equation}
-and the range score
+This is a direct proof of the call bound: an indicator can only be 0 or 1.
+
+\subsection{Gate 2 technical normalization}
+
+Define
 \begin{equation}
-\rho(x;a,b)=\clip\left(\frac{x-a}{b-a}\right), \qquad b>a.
+\clip(x)=\max(0,\min(1,x)),\qquad
+\rho(x;a,b)=\clip\left(\frac{x-a}{b-a}\right),\quad b>a.
 \end{equation}
-For frame $i$, let $w_i,h_i$ be dimensions, $\mu_i$ mean grayscale brightness, $\sigma_i$ grayscale standard deviation, $e_i$ edge-map standard deviation, and $c_i$ caption-band standard deviation. The five component scores are
+If $x\le a$, then $\rho=0$; if $a<x<b$, it rises linearly; if $x\ge b$, it equals 1. The clipping function therefore converts measurements with different units into comparable normalized components without allowing a very large measurement to exceed 1.
+
+For frame $i$, let $w_i,h_i$ be dimensions, $\mu_i$ mean grayscale brightness, $\sigma_i$ grayscale contrast, $e_i$ edge variation, and $c_i$ lower-caption-band variation. The code computes
 \begin{align}
 r_i &= \begin{cases}1,&w_i\ge1200\text{ and }h_i\ge800,\\0.4,&\text{otherwise},\end{cases}\\
 x_i &= \min\{\rho(\mu_i;18,70),\rho(255-\mu_i;18,70)\},\\
 q_i &= \rho(\sigma_i;18,60),\\
 d_i &= \rho(e_i;14,46),\\
-b_i &= \rho(c_i;8,28).
+b_i &= \rho(c_i;8,28),\\
+t_i &=0.20r_i+0.20x_i+0.25q_i+0.25d_i+0.10b_i.
+\label{eq:technical-frame}
 \end{align}
-The frame score is
-\begin{equation}
-t_i=0.20r_i+0.20x_i+0.25q_i+0.25d_i+0.10b_i.
-\end{equation}
-The weights sum to 1, so $t_i\in[0,1]$. For $n=7$ frames,
-\begin{equation}
-T=\frac{1}{n}\sum_{i=1}^{n}t_i,
+Each component lies in $[0,1]$, and the weights sum to 1. Proposition~\ref{prop:convex} therefore proves $t_i\in[0,1]$.
+
+\begin{workedexample}
+For components $(1.00,0.80,0.70,0.60,0.90)$,
+\[
+t_i=0.20+0.16+0.175+0.15+0.09=0.775.
+\]
+The arithmetic is visible and reproducible. It does not prove that the diagram teaches the right idea; that is why a separate semantic audit follows.
+\end{workedexample}
+
+\subsection{Why every frame must pass}
+
+For $n=7$ frames, define
+\[
+T=\frac1n\sum_{i=1}^nt_i,
 \qquad
 P_T=\ind{T\ge0.42}\prod_{i=1}^{n}\ind{t_i\ge0.42}.
-\end{equation}
-The product equals 1 only when every frame passes.
-
-\paragraph{Worked example.} Suppose one frame has component scores $(1.00,0.80,0.70,0.60,0.90)$. Then
-\[
-t_i=0.20(1)+0.20(0.8)+0.25(0.7)+0.25(0.6)+0.10(0.9)=0.775.
 \]
-It passes the technical threshold. If the seven-frame mean is $0.78$ but one other frame scores $0.39$, the set fails because the all-frame rule catches the weak step.
 
-\subsection{Gate 2 semantic and combined score}
+\begin{proposition}[All-frame equivalence]
+\label{prop:allframe}
+The product $\prod_i\ind{t_i\ge0.42}$ equals 1 if and only if every frame meets the technical threshold.
+\end{proposition}
 
-Let the five semantic rubric scores be $v_k\in\{1,2,3,4\}$. Then
+\begin{proof}
+If every frame meets the threshold, every indicator is 1 and their product is 1. Conversely, if even one frame fails, its indicator is 0. A product containing a zero is zero. These are the only two cases.
+\end{proof}
+
+A mean alone can hide a weak teaching step. If six frames score 0.85 and one scores 0.30, then
+\[
+T=\frac{6(0.85)+0.30}{7}=\frac{5.40}{7}\approx0.771.
+\]
+The mean looks strong, but the seventh frame may break the explanation. The product rule catches it.
+
+There is also a probability reason. Suppose, only for illustration, that each frame independently has defect probability $p$. The probability that no frame is defective is $(1-p)^7$. Therefore
 \begin{equation}
-M=\frac{1}{20}\sum_{k=1}^{5}v_k,
+\Pr(\text{at least one defective frame})=1-(1-p)^7.
+\label{eq:any-defect}
+\end{equation}
+The proof uses the complement rule: ``at least one'' is the opposite of ``none.''
+
+\begin{table}[H]
+\centering
+\begin{tabular}{@{}rrrrr@{}}
+\toprule
+Per-frame defect probability $p$ & 0.01 & 0.05 & 0.10 & 0.20 \\
+\midrule
+At least one defect in seven & 0.068 & 0.302 & 0.522 & 0.790 \\
+\bottomrule
+\end{tabular}
+\caption{Illustrative values of $1-(1-p)^7$. Independence is an assumption for this calculation, not a measured property of generated frames.}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+ width=0.76\linewidth,height=5.2cm,
+ xlabel={Per-frame defect probability $p$},
+ ylabel={Probability of at least one defect},
+ xmin=0,xmax=0.25,ymin=0,ymax=0.9,
+ grid=major,legend pos=south east,
+ tick label style={font=\small},label style={font=\small}
+]
+\addplot[navy,very thick,domain=0:0.25,samples=100]{1-(1-x)^7};
+\addlegendentry{$1-(1-p)^7$}
+\addplot[red,dashed,thick,domain=0:0.142857,samples=60]{7*x};
+\addlegendentry{union bound $7p$}
+\end{axis}
+\end{tikzpicture}
+\caption{Seven opportunities for failure make a per-frame check important. Without independence, the union bound still gives $\Pr(\text{any defect})\le7p$ when every frame has defect probability at most $p$.}
+\label{fig:defect-probability}
+\end{figure}
+
+\subsection{Gate 2 semantic score and final rule}
+
+Let $v_k\in\{1,2,3,4\}$ score semantic accuracy, teaching alignment, continuity, legibility, and visual load. Then
+\begin{equation}
+M=\frac1{20}\sum_{k=1}^5v_k,
 \qquad
 S_2=0.35T+0.65M.
 \end{equation}
-If $v_a$ denotes semantic accuracy, the final pass rule is
+Because $T,M\in[0,1]$, Proposition~\ref{prop:convex} proves $S_2\in[0,1]$. If $v_a$ is semantic accuracy and $b_2$ the reviewer's Boolean result, the exact decision is
 \begin{equation}
-P_2=P_T\ind{v_a=4}\ind{\min_k v_k\ge3}\ind{b_2=1}\ind{S_2\ge0.65}.
+P_2=P_T\ind{v_a=4}\ind{\min_kv_k\ge3}\ind{b_2=1}\ind{S_2\ge0.65}.
 \end{equation}
-For example, $T=0.78$ and rubric scores $(4,3,3,4,3)$ give $M=0.85$ and
+
+For $T=0.78$ and scores $(4,3,3,4,3)$, $M=17/20=0.85$ and
 \[
 S_2=0.35(0.78)+0.65(0.85)=0.8255.
 \]
-The set passes if the Boolean and all-frame rules also pass. As in Gate 1, the combined number cannot override a required dimension.
+The set passes only if the other indicator rules also equal 1. Again, a combined score summarizes quality but does not replace a mandatory accuracy condition.
 
-\subsection{Expected cost of the cascade}
+\subsection{Why a cheap effective gate should come early}
 
-Equation~\eqref{eq:expected-cost} assumes that later stages run conditionally. With illustrative units $C_T=1$, $C_R=1$, $C_I=7$, $C_V=2$, $p_1=0.8$, and $p_2=0.9$,
+The production pipeline has dependency constraints: Gate 2 cannot run before images exist. Within the set of checks that could inspect the same item, elementary algebra gives an ordering rule.
+
+\begin{theorem}[Two-check ordering rule]
+\label{thm:ordering}
+Suppose check $A$ costs $c_A>0$ and rejects a fraction $r_A>0$, while check $B$ costs $c_B>0$ and rejects a fraction $r_B>0$. A rejected item stops. Running $A$ before $B$ has no larger expected checking cost than running $B$ before $A$ exactly when
+\begin{equation}
+\frac{c_A}{r_A}\le\frac{c_B}{r_B}.
+\label{eq:cost-rejection}
+\end{equation}
+\end{theorem}
+
+\begin{proof}
+With $A$ first, we always pay $c_A$ and pay $c_B$ only for the fraction $1-r_A$ that continues:
+\[
+E_{A\to B}=c_A+(1-r_A)c_B.
+\]
+Similarly,
+\[
+E_{B\to A}=c_B+(1-r_B)c_A.
+\]
+Now subtract common terms:
+\begin{align*}
+E_{A\to B}\le E_{B\to A}
+&\iff c_A+c_B-r_Ac_B\le c_A+c_B-r_Bc_A\\
+&\iff r_Ac_B\ge r_Bc_A\\
+&\iff \frac{c_A}{r_A}\le\frac{c_B}{r_B}.
+\end{align*}
+The last step divides by the positive number $r_Ar_B$.
+\end{proof}
+
+\begin{workedexample}
+A local check costs 0.10 units and rejects 20\%, so $c/r=0.10/0.20=0.50$. A model audit costs 1 unit and rejects 30\%, so $c/r=1/0.30\approx3.33$. The local check belongs first under the theorem's assumptions. This supports the local-first structure of both gates.
+\end{workedexample}
+
+The theorem is not permission to violate dependencies or fairness requirements. It assumes both checks apply to the same incoming item and that rejection behavior remains comparable after reordering.
+
+\subsection{Expected cost of the complete cascade}
+
+Let $C_T$ include drafting and Gate 1, $C_R$ research, $C_I$ planning plus seven images and Gate 2, and $C_V$ narration plus composition. Let $p_1$ be the probability Gate 1 passes and $p_2$ the conditional probability Gate 2 passes. Then
+\begin{equation}
+\mathbb{E}[C]=C_T+p_1(C_R+C_I)+p_1p_2C_V.
+\label{eq:appendix-expected-cost}
+\end{equation}
+
+To derive this, define $I_1=1$ when Gate 1 passes and $I_2=1$ when both gates pass. The realized cost is
+\[
+C=C_T+I_1(C_R+C_I)+I_2C_V.
+\]
+Taking averages over many runs gives
+\[
+\mathbb{E}[C]=C_T+\mathbb{E}[I_1](C_R+C_I)+\mathbb{E}[I_2]C_V.
+\]
+For an indicator, its average equals the probability that it is 1. Thus $\mathbb{E}[I_1]=p_1$ and $\mathbb{E}[I_2]=p_1p_2$, which yields Equation~\eqref{eq:appendix-expected-cost}.
+
+With illustrative values $C_T=1$, $C_R=1$, $C_I=7$, $C_V=2$, $p_1=0.8$, and $p_2=0.9$,
 \[
 \mathbb{E}[C]=1+0.8(1+7)+(0.8)(0.9)(2)=8.84.
 \]
-Always running every stage would cost $1+1+7+2=11$ units. The difference, 2.16 units in this toy example, comes from not processing blocked artifacts. These are illustrative units, not provider prices.
+Always running every stage costs 11 units. The expected saving is $11-8.84=2.16$ units. Provider prices and pass rates must be measured before turning this example into a budget estimate.
 
-\subsection{Narration-aware scene duration}
+\subsection{Why parallel frame diagnostics reduce waiting}
+
+Let the seven technical frame checks take times $t_1,\ldots,t_7\ge0$. Sequential time is
+\[
+T_{\mathrm{seq}}=\sum_{i=1}^7t_i.
+\]
+With enough workers and no overhead, parallel time would be $T_{\mathrm{par}}=\max_i t_i$.
+
+\begin{proposition}[Basic parallel-time bound]
+\label{prop:parallel}
+For nonnegative task times,
+\[
+\max_i t_i\le\sum_i t_i.
+\]
+Therefore ideal parallel execution cannot take longer than sequential execution.
+\end{proposition}
+
+\begin{proof}
+The sum contains the largest term plus other terms that are all nonnegative. It must be at least as large as its largest term.
+\end{proof}
+
+The implementation uses at most four workers, so seven equal-duration checks require two waves: four checks, then three. If each takes $t$, the idealized time falls from $7t$ to $2t$, a speedup of $7/2=3.5$. For unequal times and real scheduling, a lower bound is
+\[
+T_{\mathrm{par}}\ge\max\left(\max_i t_i,\frac{\sum_i t_i}{4}\right).
+\]
+Thread overhead and shared resources can reduce the achieved speedup, which is why latency remains an empirical metric.
+
+\subsection{Why the scene durations sum to the target}
 
 Let $n$ be the number of captions and
-\begin{equation}
-w_i=\max(5,\text{caption word count}_i).
-\end{equation}
-If measured narration duration $A$ is available, define
-\begin{equation}
+\[
+w_i=\max(5,\text{caption word count}_i),\qquad W=\sum_{i=1}^nw_i.
+\]
+If measured narration duration is $A$, the target is
+\[
 D=\max(A+0.65,3.2n).
-\end{equation}
-Otherwise the code estimates
+\]
+Without measured audio, the fallback estimate is
+\[
+A=\max\left(3.2n,\frac{W}{2.35}+1.2\right).
+\]
+The scene allocation is
 \begin{equation}
-A=\max\left(3.2n,\frac{\sum_i w_i}{2.35}+1.2\right)
+d_i=3.2+(D-3.2n)\frac{w_i}{W}.
+\label{eq:scene-duration}
 \end{equation}
-and applies the same $D$ rule. Starting from a 3.2-second floor, the duration of scene $i$ is
+The maximum in $D$ ensures $D-3.2n\ge0$.
+
+\begin{proposition}[Timing conservation]
+\label{prop:timing}
+Every duration in Equation~\eqref{eq:scene-duration} is at least 3.2 seconds and the durations sum exactly to $D$.
+\end{proposition}
+
+\begin{proof}
+Since $D-3.2n\ge0$ and $w_i/W>0$, the added term is nonnegative, so $d_i\ge3.2$. Also
+\begin{align*}
+\sum_{i=1}^nd_i
+&=\sum_i3.2+(D-3.2n)\sum_i\frac{w_i}{W}\\
+&=3.2n+(D-3.2n)\frac{W}{W}\\
+&=D.
+\end{align*}
+No time is created or lost by the allocation.
+\end{proof}
+
+\begin{workedexample}
+For three caption weights $(5,10,15)$ and target $D=15$ seconds, the floor consumes $3(3.2)=9.6$ seconds. The remaining 5.4 seconds is divided in ratio $5:10:15=1:2:3$, adding $(0.9,1.8,2.7)$. Durations become $(4.1,5.0,5.9)$ seconds and sum to 15.
+\end{workedexample}
+
+\subsection{Why the displayed media progress never moves backward}
+\label{app:progress}
+
+Before media generation, the interface uses milestones 0.08 (draft), 0.25 (Gate 1), 0.34 (research when enabled), and 0.40 (prepare visuals). The pipeline reports 0.44 for storyboarding. For frame $i\in\{1,\ldots,7\}$,
+\begin{align}
+p_{i,\mathrm{start}}&=0.48+0.30\frac{i-0.5}{7},\\
+p_{i,\mathrm{done}}&=0.48+0.30\frac{i}{7}.
+\end{align}
+Then it reports 0.80 for visual review, 0.86 for preview, 0.90 for narration, 0.96 for composition, and 1.00 for completion.
+
+For a fixed $i$, $p_{i,\mathrm{done}}-p_{i,\mathrm{start}}=0.15/7>0$. Between frames,
+\[
+p_{i+1,\mathrm{start}}-p_{i,\mathrm{done}}=0.15/7>0.
+\]
+The seventh completion is $0.48+0.30=0.78<0.80$, so the next stage is also larger. This proves monotonicity of the media display. The numbers are stage fractions, not estimates of elapsed or remaining time.
+
+Each stage has a list of $N$ tips. The chosen index is
 \begin{equation}
-d_i=3.2+\max(0,D-3.2n)\frac{w_i}{\sum_j w_j}.
+j=(g+i+\textstyle\sum_{c\in s}\operatorname{ord}(c))\bmod N,
 \end{equation}
-Thus every scene receives reading time, while wordier captions receive a larger share of the remaining duration.
+where $g$ is grade, $i$ the frame number or zero, and $s$ the subject text. By the definition of a remainder, $0\le j<N$, so the index is always valid. This rule is deterministic and lightweight; it is not a model of the learner.
 
-\section{Evaluation Metrics and a Worked Confusion Matrix}
+\subsection{Concept graph direction, filtering, and self-report progress}
+\label{app:graph}
 
-For binary labels, let TP, TN, FP, and FN denote true positives, true negatives, false positives, and false negatives. Then
+Write the concept neighborhood as a directed labeled graph $G=(V,E)$. The central lesson is $v_0$. Each related topic $v_i$ receives a role
+\[
+r(v_i)\in\{\text{prerequisite, application, contrast, next, related}\}.
+\]
+Prerequisite edges point toward $v_0$; application and next-step edges point outward; contrast is drawn as a comparison; related concepts use a neutral connection. Selecting role $a$ displays the subgraph containing $v_0$ and nodes with $r(v_i)=a$. Filtering therefore removes items from the view but does not create new topics, call a model, or change stored lesson content.
+
+Let $z_i=1$ when the learner checks ``I can explain this link'' and $z_i=0$ otherwise. The displayed fraction is
+\begin{equation}
+M_G=\frac1n\sum_{i=1}^nz_i.
+\end{equation}
+Because $0\le\sum_i z_i\le n$, dividing by positive $n$ proves $0\le M_G\le1$. Changing one unchecked item to checked increases the numerator by 1, so progress increases by exactly $1/n$. This is a proof about the bar, not proof of knowledge; $z_i$ is self-report.
+
+\subsection{Provider-key readiness as Boolean algebra}
+
+Let $K_T=1$ when a nonempty text key is present, $U_V=1$ when illustrated video is requested, and $K_I=1$ when the required media key is present. The Create button uses
+\begin{equation}
+R=K_T\bigl[(1-U_V)+U_VK_I\bigr].
+\label{eq:key-ready}
+\end{equation}
+If video is off, $U_V=0$ and $R=K_T$. If video is on, $U_V=1$ and $R=K_TK_I$. This gives the truth table:
+
+\begin{table}[H]
+\centering
+\begin{tabular}{@{}ccccl@{}}
+\toprule
+$K_T$ & $U_V$ & $K_I$ & $R$ & Meaning \\
+\midrule
+0 & 0 & 0 & 0 & No written lesson: text key missing \\
+1 & 0 & 0 & 1 & Text-only lesson allowed \\
+1 & 1 & 0 & 0 & Video requested but media key missing \\
+1 & 1 & 1 & 1 & Text and illustrated video allowed \\
+\bottomrule
+\end{tabular}
+\caption{Readiness logic. With OpenAI text, the same entered key supplies both $K_T$ and $K_I$. With DeepSeek text, $K_I$ appears only after the optional media control is enabled.}
+\end{table}
+
+\section{Evaluation Mathematics and Counterexamples}
+
+\subsection{Confusion-matrix measures}
+
+For a binary harmful-artifact label, let TP, TN, FP, and FN denote true positives, true negatives, false positives, and false negatives. Then
 \begin{align}
 \mathrm{Accuracy}&=\frac{TP+TN}{TP+TN+FP+FN},\\
 \mathrm{Precision}&=\frac{TP}{TP+FP},\\
 \mathrm{Recall}&=\frac{TP}{TP+FN},\\
 \mathrm{F1}&=\frac{2\,\mathrm{Precision}\,\mathrm{Recall}}{\mathrm{Precision}+\mathrm{Recall}}.
 \end{align}
-If a checker sees 100 examples with $TP=36$, $TN=54$, $FP=6$, and $FN=4$, then accuracy is $0.90$, precision is $36/42\approx0.857$, recall is $36/40=0.90$, and F1 is approximately $0.878$. AUROC is the area under the curve traced by true-positive rate against false-positive rate as the decision threshold changes \citep{fawcett2006roc}.
+Substituting the precision and recall fractions and simplifying gives the equivalent form
+\begin{equation}
+\mathrm{F1}=\frac{2TP}{2TP+FP+FN}.
+\end{equation}
+This makes clear that TN does not affect F1.
 
-For the multiclass Gate 1 experiment, precision, recall, and F1 are aggregated over error classes by the experiment code. A publication should state whether an average is macro, micro, or weighted whenever the raw report is used. The distilled dashboard values should not be reverse-engineered into class counts because those counts are not stored in the production summary.
+If $TP=36$, $TN=54$, $FP=6$, and $FN=4$, accuracy is $0.90$, precision is $36/42\approx0.857$, recall is $36/40=0.90$, and F1 is approximately $0.878$.
 
+\subsection{Why accuracy alone can mislead}
+
+Suppose 100 artifacts contain 95 acceptable and 5 harmful examples. A useless checker that always predicts ``acceptable'' gets 95 correct, so accuracy is 95\%. Yet it detects zero harmful artifacts: $TP=0$ and recall is $0/5=0$. This counterexample proves that high accuracy does not imply useful harmful-artifact detection on an imbalanced dataset.
+
+A threshold $\tau$ can instead be examined using a loss
+\begin{equation}
+L(\tau)=c_{FN}FN(\tau)+c_{FP}FP(\tau),
+\end{equation}
+where $c_{FN}$ and $c_{FP}$ express the relative costs of a missed harmful artifact and an unnecessary block. The code's current thresholds are engineering settings, not values learned by minimizing a published classroom loss.
+
+AUROC summarizes ranking as the threshold changes citep{fawcett2006roc}. It does not select the classroom operating point or reveal calibration by itself. For multiclass Gate 1 results, a publication must state whether reported averages are macro, micro, or weighted.
+
+\subsection{What these proofs establish---and what they do not}
+
+The proofs establish arithmetic properties: bounded scores, monotone responses to component changes, exact Boolean pass logic, conserved duration, valid progress indices, and idealized cost or latency comparisons. They do not establish any of the following:
+\begin{itemize}
+  \item that an LLM rubric score equals factual truth;
+  \item that pixel variation equals diagram correctness;
+  \item that frame failures are independent;
+  \item that weights or thresholds are optimal for students;
+  \item that a checked concept is mastered;
+  \item that the lesson improves immediate or delayed learning.
+\end{itemize}
+Those claims require teacher labels, learner outcomes, calibrated validation data, and transparent reporting of uncertainty.
 \section{Threshold and Rubric Registry}
 \label{app:thresholds}
 
-\begin{longtable}{@{}p{0.28\linewidth}p{0.18\linewidth}p{0.46\linewidth}@{}}
+\begin{table}[H]
+\centering
+\footnotesize
+\begin{tabularx}{\linewidth}{@{}p{0.25\linewidth}p{0.17\linewidth}Y@{}}
 \toprule
 \textbf{Rule} & \textbf{Current value} & \textbf{Reason and limitation} \\
 \midrule
-\endhead
 Gate 1 word window & 70--420 & Rejects very thin or unfocused English explanations; not a multilingual reading standard. \\
 Mean sentence length & $\le27$ words & Flags dense prose; does not compute a validated readability grade. \\
 Gate 1 accuracy & $=4/4$ & Treats factual correctness as noncompensatory; still depends on the review model. \\
@@ -682,10 +1032,14 @@ Technical frame threshold & 0.42 & Screens severe render defects before semantic
 Gate 2 combined threshold & 0.65 & Engineering acceptance boundary after required component rules. \\
 Gate 2 weights & 0.35 / 0.65 & Gives semantic meaning more weight than pixel quality; not learned from outcomes. \\
 Minimum scene duration & 3.2 s & Provides a reading and transition floor; accessibility testing is still needed. \\
-Narration pace estimate & 2.35 words/s & Fallback timing heuristic used only when measured audio is absent. \\
+Narration pace estimate & 2.35 words/s & Fallback heuristic used only when measured audio is absent. \\
+Media progress milestones & 0.08--1.00 & Monotone stage fractions; not a time-remaining prediction. \\
+Concept self-report & $m/n$ & Counts links marked explainable; not an assessment of mastery. \\
+Frame workers & at most 4 & Reduces diagnostic wall time; achieved speedup depends on platform. \\
 \bottomrule
-\caption{Current thresholds reproduced from the implementation.}
-\end{longtable}
+\end{tabularx}
+\caption{Current thresholds and interface constants reproduced from the implementation.}
+\end{table}
 
 \section{Detailed Deployment Checklist}
 
@@ -697,9 +1051,9 @@ Narration pace estimate & 2.35 words/s & Fallback timing heuristic used only whe
   \item Choose repository \code{allanzhang721/AiLessonStudio}.
   \item Choose branch \code{agent/streamlit-production}.
   \item Set entrypoint \code{streamlit\_app.py} and Python 3.12.
-  \item Do not add a shared provider key unless the deployment owner intends to pay for visitor requests. The current interface accepts one visitor-owned key.
+  \item Do not add a shared provider key unless the deployment owner intends to pay for visitor requests. The interface accepts a visitor-owned text key and reveals an optional OpenAI media key only for a text-only provider.
   \item Deploy, inspect build logs, open the public URL, and confirm visibility settings permit the intended audience.
-  \item Test both providers: OpenAI should expose text, research, image model, and voice controls; DeepSeek should expose text controls and disable video.
+  \item Test both providers: OpenAI should expose text, research, image model, and voice controls; DeepSeek should show a text-only notice, keep media off by default, and reveal the optional OpenAI image-key path only after the learner enables it.
   \item Generate a text-only lesson, an illustrated lesson, a failed-key request, a Gate 1 repair, and a visual regeneration.
   \item Record the Git commit, date, provider models, and any calibrated thresholds with published results.
 \end{enumerate}
@@ -711,14 +1065,14 @@ Official Streamlit guidance recommends declaring dependencies, selecting the int
 Compile the paper from the repository root with:
 \begin{lstlisting}[language=bash]
 cd docs/whitepaper
-pdflatex visual_lesson_ai_paper.tex
-bibtex visual_lesson_ai_paper
-pdflatex visual_lesson_ai_paper.tex
-pdflatex visual_lesson_ai_paper.tex
+pdflatex VisualLessonAI_White_Paper.tex
+bibtex VisualLessonAI_White_Paper
+pdflatex VisualLessonAI_White_Paper.tex
+pdflatex VisualLessonAI_White_Paper.tex
 \end{lstlisting}
 The compilation expects the PNG experiment figures in \code{../../paper\_figures/}. All architecture and process diagrams are embedded as TikZ source in this file. The output should be archived together with the source, bibliography, figure files, software commit, and a short change log.
 
-This white paper describes the code state in August 2026. Generative AI assisted with organization, editing, and diagram planning. The authors remain responsible for checking the implementation claims, citations, equations, and publication permissions. The uploaded SLaTR manuscript was consulted only for general writing habits and exposition structure. It is marked as an anonymous submission whose sharing is prohibited, so it is neither cited as technical evidence nor reproduced.
+This white paper describes the code state through production commit \code{16bfde7} in August 2026. Generative AI assisted with organization, editing, and diagram planning. The authors remain responsible for checking the implementation claims, citations, equations, and publication permissions. The uploaded SLaTR manuscript was consulted only for general writing habits and exposition structure. It is marked as an anonymous submission whose sharing is prohibited, so it is neither cited as technical evidence nor reproduced.
 
 \bibliographystyle{plainnat}
 \bibliography{references}
