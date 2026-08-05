@@ -1,20 +1,26 @@
 \documentclass[11pt]{article}
 
-\usepackage[margin=0.9in]{geometry}
-\usepackage{amsmath,amssymb}
-\usepackage{booktabs}
-\usepackage{tabularx}
-\usepackage{array}
-\usepackage{enumitem}
-\usepackage{xcolor}
-\usepackage{hyperref}
-\usepackage{fancyhdr}
-\usepackage{microtype}
+\usepackage[margin=0.82in]{geometry}
+\usepackage{amsmath,amssymb,mathtools}
+\usepackage{booktabs,tabularx,longtable,array,multirow}
+\usepackage{enumitem,graphicx,float,subcaption}
+\usepackage{xcolor,hyperref,fancyhdr,microtype}
+\usepackage{tikz,pgfplots}
+\usepackage{listings}
+\usepackage[round,authoryear]{natbib}
+\graphicspath{{../../paper_figures/}}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric,fit,backgrounds,calc,decorations.pathreplacing}
+\pgfplotsset{compat=1.18}
 
 \definecolor{navy}{HTML}{17345F}
 \definecolor{teal}{HTML}{177C78}
+\definecolor{blue}{HTML}{3777C8}
+\definecolor{green}{HTML}{2F855A}
+\definecolor{amber}{HTML}{D97706}
+\definecolor{red}{HTML}{C2413B}
 \definecolor{ink}{HTML}{172033}
 \definecolor{soft}{HTML}{EAF8F7}
+\definecolor{pale}{HTML}{F4F7FB}
 \hypersetup{colorlinks=true,linkcolor=navy,urlcolor=teal,citecolor=navy}
 \setlength{\headheight}{14pt}
 \pagestyle{fancy}
@@ -23,12 +29,16 @@
 \rhead{August 2026}
 \cfoot{\thepage}
 \setlist{nosep,leftmargin=*}
-\renewcommand{\arraystretch}{1.2}
+\renewcommand{\arraystretch}{1.18}
 \newcommand{\product}{VisualLesson AI}
 \newcommand{\code}[1]{\texttt{#1}}
-\newcommand{\stage}[1]{\colorbox{soft}{\strut\textbf{#1}}}
+\newcommand{\ind}[1]{\mathbf{1}\!\left[#1\right]}
+\newcommand{\clip}{\operatorname{clip}_{[0,1]}}
+\newcommand{\stagebox}[1]{\tikz[baseline=(n.base)]\node[draw=navy,rounded corners=2pt,fill=soft,inner sep=3pt](n){\scriptsize\bfseries #1};}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\lstset{basicstyle=\ttfamily\small,backgroundcolor=\color{pale},frame=single,rulecolor=\color{navy!25},breaklines=true,columns=fullflexible,showstringspaces=false}
 
-\title{\textbf{VisualLesson AI}\\[0.35em]\large A Quality-Gated Lesson Studio for High-School Learning\\[0.8em]\normalsize Product White Paper}
+\title{\textbf{VisualLesson AI}\\[0.35em]\large Why We Generate, Check, and Compose High-School Lessons in Stages\\[0.75em]\normalsize Technical Product White Paper, Version 2.0}
 \author{Meiyu Shen \and Yifan Yan \and Jiachen Yu\\Jiaxing Senior High School (BC Offshore Program)}
 \date{August 2026}
 
@@ -36,160 +46,312 @@
 \maketitle
 
 \begin{abstract}
-We present \product, a public web application that turns a high-school question into a structured explanation, source-grounded notes, a quiz, a connected concept map, and an optional narrated visual lesson. We designed the system around staged generation rather than a single unrestricted model call. A text gate checks structure and then applies a compact five-dimension semantic review. A visual gate checks frame health in parallel and uses at most one semantic contact-sheet review. The application accepts user-owned API keys, supports multiple text and image providers, and keeps those keys only in the active Streamlit session. We create video by composing seven generated images with captions and narration; we do not use direct text-to-video generation because its cost is difficult to justify for the intended classroom workflow. We also provide full and visual-only regeneration after a lesson is complete. A connected-topic view links the current lesson to prerequisites, applications, contrasts, and next steps, and every related topic receives deterministic links to trusted learning platforms. This white paper describes the current product, the choices behind it, the evidence we retain from checker experiments, and the limits that remain. The live application is available at \url{https://teachhighschool.streamlit.app/}, and the implementation is available at \url{https://github.com/allanzhang721/AiLessonStudio}.
+We present \product, a deployable lesson studio that turns a Grades 9--12 question into a structured explanation, source-grounded notes, a quiz, a connected concept map, and an optional narrated video. We ask a practical design question: if generation is probabilistic and media calls are expensive, where should a small educational system check its work? We answer with a staged pipeline. Gate 1 screens the explanation before research and media spending. Gate 2 checks seven image frames with parallel pixel diagnostics and, only when those checks pass, one semantic contact-sheet review. We generate video by composing inspected still images, captions, transitions, and narration rather than by calling a direct text-to-video model. The design follows established ideas from multimedia learning, cognitive-load research, retrieval practice, feedback research, and risk-based AI evaluation, while remaining explicit that automated gates do not prove factual correctness \citep{mayer2009multimedia,sweller1988,roediger2006,hattie2007,nist2024airmf}.
+
+This paper documents the complete system as implemented in August 2026. We give accessible explanations in the main text and place the score equations, threshold logic, timing allocation, evaluation metrics, and worked calculations in the appendices. Seven system diagrams show architecture, gate decisions, expected cost, visual sequencing, concept connections, and deployment. We also separate offline checker experiments from live production behavior. The application is available at \url{https://teachhighschool.streamlit.app/}; source code is available at \url{https://github.com/allanzhang721/AiLessonStudio}.
 \end{abstract}
 
 \section{Introduction}
 
-Generative models can create educational material quickly, but speed is not the same as a useful lesson. A fluent answer can omit a condition. A polished image can teach the wrong relationship. A video can look complete while its frames are unreadable. These failures are especially important for high-school learners because students may not yet have enough background knowledge to detect them.
+A fluent answer is not automatically a good lesson. It may omit a condition, jump over a reasoning step, use language above the student's grade, or present a polished but incorrect diagram. These risks matter for high-school learners because a student may not yet have enough background knowledge to notice the error. At the same time, checking everything with another large model can double cost and latency without creating independent evidence.
 
-We developed \product\ around this practical problem. A student should be able to ask a focused question, select a grade and subject, connect a preferred model provider, and receive a lesson that is easier to inspect than a single long response. We therefore separate explanation, evidence, practice, visual media, and quality reporting. We also expose the path taken by each quality gate, including its score, latency, and model-call count.
+We built \product\ around this tension. We do not ask one model call to write an answer, find sources, draw figures, narrate them, and judge the result. We separate these responsibilities. The student first receives an explanation that has passed a local and semantic review. Research notes are generated separately so citations remain visible. The visual pipeline then creates seven inspectable frames. Only after those frames pass Gate 2 do we compose the final MP4.
 
-The current system is different from the original research prototype. The prototype treated fine-tuned text and image classifiers as the production gates. Our experiments remain useful for comparing methods, but the saved checkpoints do not answer every question the deployed application needs to answer. The text classifiers predict pedagogical error categories; they do not establish whether a newly generated explanation is factually correct. The image--text probes measure alignment on a research dataset; they do not directly measure caption readability, exposure, rendering quality, or continuity in a newly generated lesson. We therefore keep the trained models as offline baselines and use a lightweight local-first cascade in production.
+The uploaded SLaTR manuscript influenced our writing habits: we begin from the uncertainty, define each object before using it, explain the mechanism next to the corresponding diagram, and use ``we'' when describing choices made by the project team. We do not reproduce its technical claims or wording. This document is a project white paper rather than a peer-reviewed research article.
 
-We make five product contributions. First, we provide a provider-flexible application in which users supply their own text and image API keys. Second, we generate layered lessons with explanations, worked examples, common mistakes, quizzes, sources, and follow-up topics. Third, we use two cost-aware quality gates that stop downstream spending when an earlier artifact fails. Fourth, we build narrated video from still images rather than calling an expensive direct video model. Finally, we connect each lesson to a small sourced concept neighborhood and allow the user to regenerate either the complete lesson or only its visual media.
-
-\section{Product Goal and Boundary}
-
-We target short explanatory lessons for students in Grades 9--12. The system is useful for self-study, teacher preparation, and rapid exploration of a difficult concept. It is not a replacement for a teacher, a textbook, or a formal assessment system. We treat automated quality checks as risk reduction rather than proof of correctness.
-
-The product follows four design principles.
-
+We make six contributions:
 \begin{enumerate}
-    \item \textbf{Inspect before spending.} We check the explanation before web research, image generation, narration, and video composition.
-    \item \textbf{Use the cheapest useful method first.} Local checks run before semantic model calls, and technical frame checks run before vision review.
-    \item \textbf{Separate evidence from generation.} The lesson model does not invent citations. A separate web-grounded step produces source notes and clickable references.
-    \item \textbf{Keep the learner in control.} The interface exposes providers, models, cost-sensitive options, quality reports, regeneration controls, and source links.
+  \item We provide a complete public application rather than a notebook-only prototype.
+  \item We use one provider selection and one visible API-key field. An OpenAI key can serve text, grounded research, images, and narration; DeepSeek is presented honestly as a text-only path in the current product.
+  \item We implement a local-first Gate 1 that combines transparent structural checks with a compact five-dimension semantic rubric and at most one repair.
+  \item We implement a local-first Gate 2 that checks seven frames in parallel and makes at most one semantic vision call.
+  \item We compose video from approved still frames and audio, which makes every teaching step observable and regenerable.
+  \item We expose evidence, misconceptions, practice, quality records, and related-topic sources instead of returning one uninterrupted block of generated text.
 \end{enumerate}
 
-These principles define the product boundary. We do not claim that a passing gate makes a lesson error-free. We do not train on a student's private API traffic. We do not store visitor keys in files, logs, or environment variables. We also do not generate video directly from text. The current media path is intentionally explicit: plan, images, captions, narration, and composition.
+\section{Scope, Claims, and Intended Use}
 
-\section{Current System}
+We target short explanatory lessons for students in Grades 9--12. The system can support self-study, teacher preparation, and exploration of a difficult concept. It is not a teacher, textbook, examination authority, or diagnostic instrument. A passing gate means that the artifact met the implemented checks; it does not mean that the artifact is certainly correct.
 
-\subsection{Input and provider selection}
+Table~\ref{tab:claims} separates claims we can support from claims we do not make.
 
-A lesson begins with a question $q$, subject $s$, grade $g$, and language $\ell$. The user also chooses a text provider and model. OpenAI and DeepSeek are available for lesson text. OpenAI and Alibaba Wan are available for images. Narration uses an OpenAI speech model. The application asks for the required keys in the sidebar and stores them only in Streamlit session state.
-
-There is no demo mode. We made this choice because a demo response can hide provider failures and make it unclear whether a lesson was actually generated. The application instead shows whether the current key configuration is ready. Text-only use does not require an image key. Visual lesson generation requires an image key and a narration key, and the interface warns that seven image calls can have noticeable cost.
-
-\subsection{End-to-end flow}
-
-Let the user request be
-\[
-x=(q,s,g,\ell).
-\]
-The product returns a lesson bundle
-\[
-y=(e,r,z,m,F,v),
-\]
-where $e$ is the approved explanation, $r$ is the cited research report, $z$ is the quiz, $m$ is the connected concept map, $F=(I_1,\ldots,I_7)$ is the ordered frame set, and $v$ is the optional narrated MP4.
-
-\begin{figure}[ht]
+\begin{table}[H]
 \centering
-\fbox{\begin{minipage}{0.94\linewidth}
+\small
+\begin{tabularx}{\linewidth}{@{}Y Y@{}}
+\toprule
+\textbf{Supported project claim} & \textbf{Claim outside the evidence} \\
+\midrule
+The code runs two staged quality gates and records their decisions. & A passing gate guarantees scientific truth or classroom safety. \\
+The saved experiments compare named methods on their recorded datasets. & Offline accuracy equals real-world lesson correctness. \\
+The image-composition path exposes seven inspectable frames. & Seven frames are optimal for every subject or learner. \\
+The quiz provides immediate item feedback and review suggestions. & One five-item quiz estimates long-term mastery. \\
+Visitor keys are not intentionally written to project files or manifests. & The application controls a third-party provider after a request is sent. \\
+\bottomrule
+\end{tabularx}
+\caption{The paper treats quality gates as risk-reduction controls, not proofs.}
+\label{tab:claims}
+\end{table}
+
+\section{Evidence Behind the Learning Design}
+
+\subsection{Why we divide a lesson into visible parts}
+
+Cognitive-load research distinguishes useful reasoning from processing consumed by the presentation itself. Sweller's early analysis argues that demanding problem-solving procedures can consume capacity that would otherwise support schema acquisition \citep{sweller1988}. Multimedia-learning research likewise reports benefits from removing irrelevant material, signaling structure, and coordinating words with graphics \citep{mayer2009multimedia,mayer2021handbook}. We translate these findings into conservative product choices: a focused explanation, explicit key ideas, a worked example, a reserved caption band, a limited number of visual steps, and restrained motion.
+
+These sources do not prove that our interface improves learning. They explain why the interface is structured for inspection and low extraneous load. A classroom evaluation is still required.
+
+\subsection{Why we include retrieval and feedback}
+
+Retrieval practice can improve delayed retention compared with repeated study, although the effect depends on the task and context \citep{roediger2006}. Feedback can be powerful, but its effect depends on what it says and how it is used \citep{hattie2007}. We therefore include five short questions, answer explanations, and a list of missed concepts. We do not turn one quiz into an opaque mastery score.
+
+\subsection{Why we treat generated content as managed risk}
+
+Large language models create opportunities for education but also introduce factual, pedagogical, privacy, and overreliance risks \citep{kasneci2023chatgpt}. NIST frames generative-AI assurance as an ongoing process of mapping, measuring, and managing risk rather than as a one-time certificate \citep{nist2024airmf}. Our gates follow the same practical direction: define narrow checks, record what ran, block expensive downstream work when an upstream artifact fails, and preserve a human role.
+
+\section{System Overview}
+
+Let a request be
+\begin{equation}
+  x=(q,s,g,\ell,p,m,k),
+\end{equation}
+where $q$ is the question, $s$ the subject, $g$ the grade, $\ell$ the language, $p$ the provider, $m$ the selected model, and $k$ the session-only API key. The output is a lesson bundle
+\begin{equation}
+  y=(e,r,z,G,F,a,v,h),
+\end{equation}
+where $e$ is the approved explanation, $r$ the research report, $z$ the quiz, $G$ the concept graph, $F=(I_1,\ldots,I_7)$ the frame sequence, $a$ the narration, $v$ the MP4, and $h$ the quality history.
+
+\begin{figure}[H]
 \centering
-\stage{Question and provider setup}
-$\longrightarrow$
-\stage{Structured lesson draft}
-$\longrightarrow$
-\stage{Gate 1}\\[0.8em]
-$\longrightarrow$
-\stage{Cited notes and concept links}
-$\longrightarrow$
-\stage{Seven-frame storyboard}
-$\longrightarrow$
-\stage{Gate 2}\\[0.8em]
-$\longrightarrow$
-\stage{Narration and MP4}
-$\longrightarrow$
-\stage{Quiz and quality report}
-\end{minipage}}
-\caption{The current product flow. Expensive media stages begin only after Gate 1 passes. Gate 2 is persisted immediately after frame review, even if narration or MP4 assembly later fails.}
-\label{fig:flow}
+\begin{tikzpicture}[
+ node distance=5mm and 8mm,
+ box/.style={draw=navy,rounded corners=3pt,fill=pale,minimum height=9mm,text width=24mm,align=center,font=\small},
+ gate/.style={diamond,draw=amber!85!black,fill=amber!12,aspect=2.0,align=center,font=\small},
+ arrow/.style={-{Latex[length=2mm]},thick,draw=navy}
+]
+\node[box] (input) {Question\\grade, subject\\one provider key};
+\node[box,right=of input] (draft) {Structured\\lesson draft};
+\node[gate,right=of draft] (g1) {Gate 1};
+\node[box,right=of g1] (evidence) {Sources, quiz,\\concept map};
+\node[box,below=11mm of evidence] (plan) {Seven-step\\visual plan};
+\node[box,left=of plan] (images) {Seven images\\and captions};
+\node[gate,left=of images] (g2) {Gate 2};
+\node[box,left=of g2] (video) {Narration,\\transitions, MP4};
+\draw[arrow] (input)--(draft);
+\draw[arrow] (draft)--(g1);
+\draw[arrow] (g1)--node[above,font=\scriptsize]{pass}(evidence);
+\draw[arrow] (evidence)--(plan);
+\draw[arrow] (plan)--(images);
+\draw[arrow] (images)--(g2);
+\draw[arrow] (g2)--node[above,font=\scriptsize]{pass}(video);
+\draw[-{Latex[length=2mm]},draw=red,dashed] (g1.south) -- ++(0,-7mm) node[below,font=\scriptsize,align=center]{block or\\one repair};
+\draw[-{Latex[length=2mm]},draw=red,dashed] (g2.south) -- ++(0,-7mm) node[below,font=\scriptsize,align=center]{needs review;\\no final MP4};
+\end{tikzpicture}
+\caption{Production architecture. The ordering is also a spending policy: text is checked before image calls, and frames are checked before final composition.}
+\label{fig:architecture}
 \end{figure}
 
-The application records stage times and stores the checker output in the run manifest. It also distinguishes a gate that failed from one that did not apply. Gate 2 can therefore be \emph{waiting}, \emph{blocked}, \emph{not completed}, \emph{not applicable}, \emph{passed}, or \emph{needs review}. This distinction matters. A text-only lesson should not look like a failed visual check, and a narration error should not erase a visual check that already completed.
+The application stores explicit status rather than a single success flag. Gate 2 can be waiting, blocked by Gate 1, not applicable to a text-only lesson, incomplete because media failed, passed, or marked for review. This prevents a narration failure from erasing a completed visual audit.
 
-\section{The Lesson Experience}
+\section{Why We Use a Staged Cascade}
 
-\subsection{Layered explanation}
+Suppose a text check costs $C_T$, research costs $C_R$, images cost $C_I$, and narration plus composition costs $C_V$. Let $p_1$ be the fraction of drafts that pass Gate 1 and $p_2$ the fraction of frame sets that pass Gate 2. A simplified expected variable cost is
+\begin{equation}
+  \mathbb{E}[C]=C_T+p_1(C_R+C_I)+p_1p_2C_V.
+  \label{eq:expected-cost}
+\end{equation}
+The equation uses multiplication for a simple reason: the video stage is reached only when both earlier events occur. If a draft fails, we do not buy images for it. If its images fail, we do not pretend the final video is approved.
 
-The text model returns a strict JSON lesson bundle. We normalize that bundle before rendering it. The student sees a clear explanation, key ideas, prerequisites, a worked example, a retrieval question, common traps, useful connections, and a short study path. We use tabs to keep these layers visible without placing everything in one long page.
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[x=1cm,y=0.72cm,font=\small]
+\draw[->] (0,0)--(12.5,0) node[right]{work and external cost};
+\foreach \x/\w/\c/\lab in {0/1.3/blue!65/Text draft,1.3/1.0/teal!65/Gate 1,2.3/2.0/green!55/Research,4.3/4.5/amber!60/7 images,8.8/1.2/teal!65/Gate 2,10.0/2.0/navy!55/Audio + MP4}{
+  \fill[\c] (\x,0.25) rectangle +(\w,0.8);
+  \node[rotate=35,anchor=west,font=\scriptsize] at (\x+0.08,1.15) {\lab};
+}
+\draw[red,dashed,thick] (2.3,-0.15)--(2.3,2.2) node[above,align=center]{Gate 1 can stop\\before media spending};
+\draw[red,dashed,thick] (10,-0.15)--(10,2.2) node[above,align=center]{Gate 2 can stop\\before final assembly};
+\end{tikzpicture}
+\caption{Qualitative cost path. Segment widths illustrate relative workflow weight; they are not provider prices. Actual prices and latency vary by model and date.}
+\label{fig:cost}
+\end{figure}
 
-The explanation and worked example preserve Markdown paragraphs and lists. We also normalize common mathematical wrappers. Inline expressions written with parenthesized LaTeX delimiters become dollar-delimited math, while bracketed delimiters, equation environments, and math code fences become display math. This keeps model-authored formulas compatible with Streamlit's KaTeX rendering.
+The cascade also improves diagnosis. A local readability warning, a factual rubric failure, a dark frame, and a sequence-continuity problem should not all appear as ``generation failed.'' Each belongs to a different stage and suggests a different correction.
 
-\subsection{Practice and feedback}
+\section{Gate 1: Explanation Review}
 
-Each lesson contains five multiple-choice questions. After submission, the application shows the correct answer and a short explanation. It also summarizes the concepts that the student missed. This is a lightweight review signal, not a longitudinal mastery estimate. We prefer a transparent list of concepts to an opaque score that would require more interaction data than one lesson can provide.
+\subsection{Local screen}
 
-\subsection{Evidence and sources}
+The local screen checks four transparent conditions: the explanation contains 70--420 alphabetic words; it includes at least one important term from the question when such terms exist; and its mean sentence length is no more than 27 words. These values are engineering defaults for a focused lesson, not universal reading-level standards. The gate reports the violated condition instead of hiding it behind a classifier label.
 
-When cited research is enabled, we use a separate grounded search call after Gate 1 passes. The report is divided into what reliable sources agree on, notes from each source, and evidence limits. URL annotations are converted into visible Markdown links. We prioritize government agencies, universities, museums, standards bodies, peer-reviewed work, and established open textbooks.
+\subsection{Semantic rubric and bounded repair}
 
-We keep this evidence path separate from the initial lesson draft. The generator is instructed not to invent books, URLs, statistics, or named studies. A citation shows where a claim came from; it does not guarantee that every source is correct or that the lesson covers every viewpoint. The interface states this limitation directly.
+A semantic reviewer scores accuracy, completeness, logical flow, grade fit, and clarity from 1 to 4. Accuracy must equal 4, and every other dimension must be at least 3. When the first review fails but returns a revision, the system allows one repair and one recheck. The maximum of two semantic calls bounds the loop.
 
-\section{Quality Gate 1: Explanation Review}
+\begin{figure}[H]
+\centering
+\resizebox{0.96\linewidth}{!}{%
+\begin{tikzpicture}[
+ node distance=5mm and 10mm,
+ proc/.style={draw=navy,rounded corners=2pt,fill=pale,text width=29mm,minimum height=9mm,align=center,font=\small},
+ dec/.style={diamond,draw=amber!90!black,fill=amber!12,aspect=2.1,align=center,font=\small},
+ arr/.style={-{Latex[length=2mm]},thick,draw=navy}
+]
+\node[proc] (draft) {Draft explanation};
+\node[proc,right=of draft] (local) {Local structure\\and relevance screen};
+\node[proc,right=of local] (rubric) {Five-score\\semantic audit};
+\node[dec,below=9mm of rubric] (pass) {All rules\\pass?};
+\node[proc,left=of pass] (accept) {Accept and record\\Gate 1 evidence};
+\node[dec,right=of pass] (repair) {Repair\\available and\\unused?};
+\node[proc,below=8mm of repair] (revise) {Apply one revision\\and recheck};
+\node[proc,below=8mm of pass] (block) {Block media and\\show issues};
+\draw[arr] (draft)--(local); \draw[arr] (local)--(rubric); \draw[arr] (rubric)--(pass);
+\draw[arr] (pass)--node[above,font=\scriptsize]{yes}(accept);
+\draw[arr] (pass)--node[above,font=\scriptsize]{no}(repair);
+\draw[arr] (repair)--node[right,font=\scriptsize]{yes}(revise);
+\draw[arr] (revise.west)-| (local.south);
+\draw[arr] (repair.south west)--node[left,font=\scriptsize]{no}(block.north east);
+\end{tikzpicture}%
+}
+\caption{Gate 1 decision graph. The loop is bounded to prevent indefinite self-revision.}
+\label{fig:gate1}
+\end{figure}
 
-Gate 1 is a local-then-semantic cascade. The local screen checks length, focus, overlap with key question terms, and sentence density. These checks are inexpensive and typically complete in milliseconds. They identify structural problems, but they do not claim to verify facts.
+If the five scores are $s_d\in\{1,2,3,4\}$, the displayed normalized score is
+\begin{equation}
+  S_1=\frac{1}{5}\sum_{d=1}^{5}\frac{s_d}{4}.
+\end{equation}
+A score of $S_1=0.90$ is not sufficient by itself. The logical pass rule still requires maximum accuracy and no failed local check. Appendix~\ref{app:math} gives the exact indicator form and examples.
 
-A compact semantic review then scores five dimensions from 1 to 4:
-\[
-D_1=\{\text{accuracy, completeness, logical flow, grade fit, clarity}\}.
-\]
-The explanation passes only when accuracy is 4 and every other dimension is at least 3. If the first review fails and the model returns a correction, we permit one repair and one recheck. Thus the normal path uses one model call, while the repair path uses two. We cap the loop because repeated self-revision can increase cost without providing independent evidence.
+\subsection{Why the saved text classifier is not the production judge}
 
-This design replaces the original production claim that a DistilBERT error classifier decides whether the explanation is safe. We still report the classifier experiments, but we use them for what they measure. DistilBERT, BERT, and RoBERTa classify error types on the saved dataset. Their performance does not establish factual correctness for an arbitrary new lesson.
+The repository retains DistilBERT, BERT, and RoBERTa experiments. BERT introduced bidirectional transformer pretraining, RoBERTa revised its training recipe, and DistilBERT compressed a larger teacher model \citep{devlin2019bert,liu2019roberta,sanh2019distilbert}. Our saved models classify pedagogical error categories on the experiment dataset. That is useful offline evidence, but it is not the same task as verifying an arbitrary new explanation. We therefore report those models as baselines and use the narrower, inspectable cascade in production.
+\section{Gate 2: Visual Review}
 
-The gate returns its final explanation, normalized score, issues, rounds, local and semantic latency, model-call count, repair count, and method comparison. In practice, this record makes the decision easier to inspect and makes cost behavior easier to understand.
+\subsection{Parallel technical checks}
 
-\section{Quality Gate 2: Visual Review}
+Gate 2 receives seven ordered frames. For each frame, it measures width, height, mean grayscale brightness, grayscale contrast, edge variation, and variation in the lower caption band. Four worker threads process frames in parallel. Five normalized component scores then represent resolution, exposure, contrast, detail, and caption-band readability. Their weighted sum produces a technical frame score $t_i\in[0,1]$.
 
-Gate 2 begins only after all seven frames are available. We calculate technical metrics for multiple frames in parallel. The metrics cover resolution, exposure, contrast, edge detail, and variation in the caption band. Each frame receives a score and a list of concrete issues such as low resolution, poor exposure, low contrast, low detail, or weak caption-band readability.
+The local stage uses a strict all-frame rule. Its mean must be adequate, and every required frame must meet the technical threshold $0.42$. This is important because an average can hide one unusable teaching step. If any frame fails, the system stops before a vision-model call.
 
-The gate uses a local-first decision rule. Let $t_i\in[0,1]$ be the technical score of frame $i$. If the average technical score is below its threshold, or any required frame fails, we stop before semantic review. This short circuit makes the failure fast and uses no vision-model call. If the frames pass and a compatible vision client is available, we combine them into one compressed contact sheet and make one semantic call. The reviewer scores semantic accuracy, teaching alignment, sequence continuity, legibility, and visual load.
+\subsection{One semantic contact-sheet review}
 
-For a completed semantic review, the displayed score is
-\[
-S_2=0.35S_{\mathrm{technical}}+0.65S_{\mathrm{semantic}}.
-\]
-The score is useful for reporting, but the pass decision also requires both component checks to pass. A high semantic score therefore cannot hide an unreadable frame, and strong pixel statistics cannot establish that a diagram teaches the right concept.
+When the technical stage passes and a compatible vision client is available, the frames are resized into one ordered contact sheet. One call scores semantic accuracy, teaching alignment, sequence continuity, legibility, and visual load from 1 to 4. Semantic accuracy must equal 4 and all other dimensions must be at least 3. The combined display score is
+\begin{equation}
+  S_2=0.35T+0.65M,
+  \label{eq:gate2}
+\end{equation}
+where $T$ is mean technical quality and $M$ is normalized semantic quality. The larger semantic weight expresses an engineering priority: a sharp, bright image is still a poor teaching image if it communicates the wrong idea. The weights and thresholds were not learned from classroom outcomes and should be recalibrated when a suitable labeled dataset becomes available.
 
-The original trained backend is not loaded in the public app. If it is requested without a production model integration, the gate falls back to the parallel heuristic path instead of breaking lesson generation. This is deliberate. The saved CLIP probes are research artifacts, and the public application avoids heavyweight local ML dependencies to keep startup light.
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+ node distance=5mm and 7mm,
+ frame/.style={draw=blue,fill=blue!8,minimum width=10mm,minimum height=8mm,font=\scriptsize},
+ proc/.style={draw=navy,rounded corners=2pt,fill=pale,text width=29mm,minimum height=9mm,align=center,font=\small},
+ dec/.style={diamond,draw=amber!90!black,fill=amber!12,aspect=2.0,align=center,font=\small},
+ arr/.style={-{Latex[length=2mm]},thick,draw=navy}
+]
+\foreach \i in {1,...,7}{\node[frame] (f\i) at ({(\i-4)*1.15},0) {$I_{\i}$};}
+\node[proc,below=8mm of f4] (parallel) {Parallel pixel diagnostics\\resolution, exposure, contrast, detail, caption band};
+\node[dec,below=8mm of parallel] (tech) {Every frame\\passes?};
+\node[proc,below left=8mm and 10mm of tech] (stop) {Stop before semantic call\\and report failed steps};
+\node[proc,below right=8mm and 10mm of tech] (sheet) {Build one ordered\\contact sheet};
+\node[proc,below=7mm of sheet] (vision) {One semantic audit};
+\node[dec,below=7mm of vision] (final) {$T$, $M$, and rubric\\rules pass?};
+\node[proc,below left=7mm and 4mm of final] (review) {Needs review};
+\node[proc,below right=7mm and 4mm of final] (approved) {Approved frames};
+\foreach \i in {1,...,7}{\draw[arr] (f\i)--(parallel);}
+\draw[arr] (parallel)--(tech);
+\draw[arr] (tech)--node[left,font=\scriptsize]{no}(stop);
+\draw[arr] (tech)--node[right,font=\scriptsize]{yes}(sheet);
+\draw[arr] (sheet)--(vision); \draw[arr] (vision)--(final);
+\draw[arr] (final)--node[left,font=\scriptsize]{no}(review);
+\draw[arr] (final)--node[right,font=\scriptsize]{yes}(approved);
+\end{tikzpicture}
+\caption{Gate 2 decision graph. Pixel diagnostics screen rendering failures; the contact sheet addresses meaning and continuity.}
+\label{fig:gate2}
+\end{figure}
 
-\section{Visual Lesson and Video Pipeline}
+\subsection{Why CLIP remains an offline comparison}
 
-The planner turns the approved explanation into seven ordered teaching steps. Each step specifies a goal, what must remain, what must be added, and what must be avoided. The image pipeline creates the frames from this shared plan. Captions use a reserved lower band so the visual explanation and the narration follow the same order.
+CLIP learns an image--text representation through contrastive pretraining and can measure whether an image and caption are close in its embedding space \citep{radford2021learning}. Our saved Gate 2 experiments compare cosine thresholding with linear and multilayer probes on aligned and mismatched Flickr8k pairs \citep{hodosh2013framing}. This benchmark asks whether a caption matches an image. Production Gate 2 also asks whether labels are readable, exposure is usable, the sequence remains coherent, and the visual teaches the approved explanation. Because the tasks differ, we do not present the CLIP benchmark as a production certification.
 
-We then synthesize a clean teaching voice and compose the still frames, captions, transitions, and audio into an H.264 MP4. Scene durations are derived from narration length and constrained by a minimum reading time. This produces a predictable artifact that can be inspected frame by frame.
+\section{From Approved Frames to Video}
 
-We removed the direct text-to-video path. Direct video generation is expensive, difficult to make deterministic, and harder to validate at the level of individual teaching steps. The image-composition path gives us seven explicit checkpoints, stable captions, controllable timing, and a recoverable intermediate artifact. It is not as cinematic as a direct video model, but it is better aligned with the instructional and cost constraints of this product.
+\subsection{Why we removed direct text-to-video generation}
 
-Gate 2 is saved immediately after frame validation. This sequencing fixes an important reliability problem in the earlier interface. Previously, the application stored the entire pipeline result only after narration and MP4 assembly. If audio failed, the completed visual audit disappeared and the interface incorrectly showed that Gate 2 had not run. We now publish the gate result before later media stages, so the visible state matches the work that actually completed.
+We removed the direct video path for three reasons. First, a generated clip is harder to inspect at the level of individual teaching steps. Second, it can change objects, labels, or causal relations over time. Third, its cost is difficult to control in a classroom workflow. The still-image route creates seven explicit checkpoints and allows visual-only regeneration without rewriting an approved explanation.
 
-\section{Regeneration}
+\subsection{Storyboard contract}
 
-Generation is probabilistic, and a user may prefer a different explanation or visual style even when both gates pass. We therefore expose two post-generation actions.
+The planner produces a shared scene bible and seven ordered steps. Each step states its teaching goal, retained objects, additions, removals, labels, and misconceptions to avoid. The image prompt includes the same visual style, layout zones, typography, color assignments, and canonical explanation. A fixed lower band is reserved for captions. These constraints implement coherence and signaling as engineering rules rather than asking the image model to rediscover them for every frame \citep{mayer2021handbook}.
 
-\begin{itemize}
-    \item \textbf{Regenerate full lesson} creates a new explanation and repeats the enabled research and media stages using the saved question, subject, grade, and language.
-    \item \textbf{Regenerate visuals only} keeps the approved explanation but creates a fresh storyboard, seven images, narration, and MP4.
-\end{itemize}
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[x=1.55cm,y=1cm,font=\small]
+\foreach \i/\lab in {1/Question,2/Objects,3/Relation,4/Mechanism,5/Equation,6/Example,7/Summary}{
+  \draw[rounded corners=2pt,fill=teal!10,draw=teal] (\i-1,0) rectangle +(0.86,0.68);
+  \node[font=\scriptsize,align=center] at (\i-0.57,0.34) {\i\\\lab};
+  \ifnum\i<7 \draw[-{Latex[length=1.8mm]},navy,thick] (\i-0.13,0.34)--(\i+0.08,0.34); \fi
+}
+\draw[decorate,decoration={brace,amplitude=4pt},thick] (0,-0.12)--(6.86,-0.12);
+\node[below,font=\scriptsize] at (3.43,-0.3) {one scene bible, stable objects and color meanings};
+\end{tikzpicture}
+\caption{A seven-scene instructional timeline. Labels describe roles, not a mandatory subject template; the planner adapts them to the question.}
+\label{fig:timeline}
+\end{figure}
 
-The interface states the cost difference before the user acts. Visual regeneration makes seven new image calls. We retain the existing lesson until the replacement path produces new state, and we use the same immediate Gate 2 persistence described above. This lets a student retry presentation without losing the conceptual content that already passed Gate 1.
+\subsection{Narration-aware timing and composition}
 
-\section{Connected Concept Map}
+The system estimates or measures narration length, gives every scene at least 3.2 seconds, and allocates remaining time by caption word count. Frames are fitted to a 16:9 canvas over a blurred background so content is not cropped. A restrained 1.8\% Ken Burns movement alternates direction, and adjacent scenes cross-fade. The video is encoded as H.264 with CRF 18, browser-compatible \code{yuv420p}, and fast-start metadata. Narration is normalized toward $-16$ LUFS with a $-1.5$ dB true-peak ceiling when the FFmpeg filter is available. Appendix~\ref{app:math} gives the timing equation.
 
-A useful lesson should show what comes next. We ask the text model for five short related topics and a typed relationship for each topic: prerequisite, application, contrast, or next step. The model also explains why each connection is useful. We discard any URL returned by the model.
+\section{Student-Facing Lesson Structure}
 
-The application renders these nodes as a directed graph centered on the current lesson. A student can click a node to open its first source. Below the graph, each concept receives a study card with two links. One link searches Khan Academy using the current subject and topic. The second comes from a deterministic subject mapping: OpenStax for physics, biology, and chemistry; GeoGebra for mathematics; MDN for computing; and OpenStax's subject library for a general topic.
+The generated bundle is rendered as six views:
+\begin{enumerate}
+  \item \textbf{Lesson:} objective, explanation, key ideas, worked example, common mistake, and quick check.
+  \item \textbf{Concept map:} prerequisites, applications, contrasts, and next topics.
+  \item \textbf{Evidence and sources:} a grounded synthesis, source-by-source notes, and evidence limits.
+  \item \textbf{Practice:} five multiple-choice items with answer explanations and missed-concept guidance.
+  \item \textbf{Learning library:} deterministic links to established platforms rather than model-invented URLs.
+  \item \textbf{Quality report:} gate path, score, latency, issues, repairs, and model-call count.
+\end{enumerate}
 
-This view is inspired by connected-literature tools, but its purpose is different. We are not claiming citation similarity between papers. We represent a small learning neighborhood around one lesson. The edges describe instructional relationships, and the links lead to study resources. Because the source domains are fixed in code, the language model proposes concepts but does not control where students are sent.
+Markdown and common LaTeX wrappers are normalized before Streamlit renders them. This prevents a useful equation such as $F=ma$ from appearing as raw control characters. The normalizer preserves paragraphs and lists instead of flattening the lesson into one line.
 
-\section{Offline Checker Evidence}
+\subsection{Connected concepts with bounded links}
 
-The repository contains saved experiments for trained and untrained checker variants. Table~\ref{tab:benchmarks} summarizes the results shown in the application. We call these offline experiment metrics. They are not live request latency, and the Gate 1 and Gate 2 datasets are different.
+The text model proposes five short topic connections and classifies each as a prerequisite, application, contrast, or next step. The program discards model-generated URLs. It attaches sources using deterministic subject mappings to platforms such as OpenStax, Khan Academy, GeoGebra, PhET, and MDN.
 
-\begin{table}[ht]
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+ node distance=13mm and 20mm,
+ core/.style={circle,draw=navy,fill=navy!10,text width=24mm,align=center,minimum size=22mm,font=\small\bfseries},
+ topic/.style={rectangle,rounded corners=3pt,draw=teal,fill=soft,text width=27mm,align=center,minimum height=9mm,font=\small},
+ edge/.style={-{Latex[length=2mm]},thick}
+]
+\node[core] (c) {Current\\lesson};
+\node[topic,above left=of c] (p) {Prerequisite\\trusted links};
+\node[topic,above right=of c] (a) {Application\\trusted links};
+\node[topic,below left=of c] (d) {Contrast\\trusted links};
+\node[topic,below right=of c] (n) {Next step\\trusted links};
+\draw[edge,blue] (p)--node[above,sloped,font=\scriptsize]{supports}(c);
+\draw[edge,green] (c)--node[above,sloped,font=\scriptsize]{used in}(a);
+\draw[edge,amber] (c)--node[below,sloped,font=\scriptsize]{distinguish}(d);
+\draw[edge,teal] (c)--node[below,sloped,font=\scriptsize]{continue}(n);
+\end{tikzpicture}
+\caption{Concept neighborhood. The model proposes instructional relationships; code-controlled mappings determine destination domains.}
+\label{fig:concept}
+\end{figure}
+
+\section{Offline Checker Experiments}
+
+The repository contains saved benchmark summaries for the earlier research checkers. Table~\ref{tab:benchmarks} reports the values used by the application's friendly experiment snapshot. Gate 1 and Gate 2 use different datasets and tasks, so their rows must not be ranked against one another.
+
+\begin{table}[H]
 \centering
 \small
 \begin{tabular}{@{}llrrrrr@{}}
@@ -204,52 +366,361 @@ Gate & Method & Accuracy & Precision & Recall & F1 & AUROC \\
 2 & CLIP MLP probe & 0.9517 & 0.9462 & 0.9578 & 0.9520 & 0.9885 \\
 \bottomrule
 \end{tabular}
-\caption{Saved checker experiments. Gate 1 methods classify pedagogical error categories. Gate 2 methods classify aligned and misaligned Flickr8k pairs. These values support method comparison but do not directly estimate production lesson correctness.}
+\caption{Saved offline metrics. Gate 1 classifies pedagogical error types. Gate 2 classifies aligned versus mismatched Flickr8k pairs. ``--'' means AUROC was not retained in the summarized multiclass result.}
 \label{tab:benchmarks}
 \end{table}
 
-The best Gate 1 result in this comparison is RoBERTa. The best Gate 2 result is the untrained CLIP cosine threshold, which also exceeds the trained probes in this experiment. This result is one reason we do not assume that a trained head is automatically the better deployment choice. The operational decision also considers model size, startup time, the match between the benchmark task and the product failure, and whether the output is interpretable.
+\begin{figure}[H]
+\centering
+\begin{subfigure}{0.48\linewidth}
+\includegraphics[width=\linewidth]{checker1_comparison_publication.png}
+\caption{Gate 1 classifier comparison.}
+\end{subfigure}\hfill
+\begin{subfigure}{0.48\linewidth}
+\includegraphics[width=\linewidth]{checker2_comparison_publication.png}
+\caption{Gate 2 alignment comparison.}
+\end{subfigure}
+\caption{Offline experiment figures generated from repository records. These plots do not show live request latency or learning outcomes.}
+\label{fig:offlineplots}
+\end{figure}
 
-We surface both kinds of evidence in the application. The home page shows the fixed offline benchmark snapshot. After generation, the quality report shows live gate latency, decision path, score, model-call count, and per-method details for the current lesson. Keeping these views separate prevents experiment runtime from being mistaken for per-request latency.
+The RoBERTa classifier has the highest saved Gate 1 F1. The untrained CLIP cosine threshold has the highest saved Gate 2 F1 and AUROC. This result illustrates why ``trained'' is not itself a deployment metric. We also consider task match, startup weight, latency, interpretability, and whether a baseline measures the product failure we need to catch.
 
-\section{Implementation, Privacy, and Operations}
+\subsection{Metric interpretation}
 
-The public interface uses Streamlit and Python 3.12. The production dependency set remains small: the provider SDK, Pillow, ImageIO, FFmpeg integration, Streamlit, Requests, and Graphviz. Training libraries and research datasets are separated from the deployment requirements. This reduces cold-start cost and avoids loading checkpoints that the product does not use.
+Accuracy asks what fraction of all predictions were correct. Precision asks, among examples predicted positive, how many were positive. Recall asks, among all positive examples, how many were found. F1 is the harmonic mean of precision and recall. AUROC summarizes ranking across thresholds. Appendix~\ref{app:math} defines each quantity and gives a small confusion-matrix example. For imbalanced classes, accuracy alone can be misleading; this is why we retain multiple metrics \citep{fawcett2006roc}.
 
-Visitor keys are passed directly to provider clients and are not copied into environment variables. They stay in the current session and are not written to lesson JSON, manifests, logs, or repository files. A deployment owner may still configure an optional server-side OpenAI secret, but the normal interface asks each visitor to provide the required keys.
+\section{Reproducible Local Setup}
 
-The application is deployed from the \code{agent/streamlit-production} branch, while completed changes are also merged into \code{main}. The current quality and interface work is covered by 30 deployable production tests. These tests cover provider selection, schema validation, fail-fast rendering, Markdown and math normalization, frame scoring, semantic short-circuiting, trained-backend fallback, Gate 2 persistence, video composition, source annotation conversion, and concept-map URL safety.
+\subsection{Requirements}
 
-\section{Limitations}
+The production target is Python 3.12. The minimal application dependencies are OpenAI's Python SDK, Pillow, ImageIO, ImageIO-FFmpeg, Streamlit, Requests, and Graphviz. A local Graphviz executable may also be required for graph rendering. Research and training dependencies are isolated from the website requirements.
 
-The product has five important limitations.
+\subsection{Installation}
 
-First, the semantic gates can share weaknesses with the generator, especially when both use related model families. A passing result is not independent expert review. Second, technical frame metrics are proxies. Edge variation can detect low detail, but it cannot determine whether every arrow or label is scientifically correct. Third, the trusted concept links lead to reliable platforms, but some are search or textbook entry points rather than exact passages selected for the generated claim. Fourth, image and narration costs remain external and vary by provider. Regeneration makes those calls again. Fifth, Streamlit session state is temporary. A browser refresh or session expiration can remove generated state unless the user downloads the lesson or video.
+\begin{lstlisting}[language=bash]
+git clone https://github.com/allanzhang721/AiLessonStudio.git
+cd AiLessonStudio
+python -m venv .venv
+# Windows PowerShell
+.venv\Scripts\Activate.ps1
+# macOS or Linux: source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+python -m pytest -q
+python -m streamlit run streamlit_app.py
+\end{lstlisting}
 
-The saved experiments also have limits. The Checker 1 dataset measures error-type classification, and the Checker 2 dataset uses aligned and mismatched Flickr8k pairs. Neither dataset is a full evaluation of learning outcomes. We do not claim that the benchmark numbers establish classroom effectiveness.
+The app opens even before a key is entered, but generation remains locked. The sidebar shows one provider selector and one password-style key field. With OpenAI, the same key is reused for supported text, grounded research, image, and narration calls. With DeepSeek, the app exposes text generation and disables illustrated video because the current pipeline has no same-provider DeepSeek image and narration path. We do not ask for a second provider credential.
 
-\section{Roadmap}
+\subsection{Directory map}
 
-We see four useful next steps. We can map web-grounded citations directly to individual concept nodes instead of relying on curated platform searches. We can add teacher approval and editing before media generation, which would create a stronger human checkpoint. We can persist lesson history without storing API keys and allow a student to compare regenerated versions. Finally, we can evaluate the complete lesson with teachers and students, measuring factual corrections, time saved, comprehension, and which visual failures the current gate misses.
+\begin{lstlisting}
+streamlit_app.py              # production entrypoint
+app_v2.py                     # complete Streamlit interface
+pipeline/
+  lesson_service.py           # bundle generation, research, sources
+  quality_gates.py            # Gate 1
+  frame_checker.py            # Gate 2
+  planner.py                  # seven-scene plan
+  image_pipeline.py           # frame generation
+  video_pipeline.py           # timing, motion, audio, MP4
+  markdown_render.py          # Markdown and LaTeX normalization
+  gate_benchmarks.py          # small offline metric snapshot
+tests/                        # deployment and regression tests
+requirements.txt              # production dependencies
+requirements-research.txt     # optional experiment dependencies
+\end{lstlisting}
+
+\subsection{Test protocol}
+
+The deployment suite contains 31 tests at this paper version. It covers frame scoring and short-circuit behavior, explanation repair, provider routing, one-key Streamlit rendering, source annotation conversion, schema normalization, Markdown and LaTeX handling, fail-fast plan validation, student-analysis helpers, narration arguments, audio-aware timing, and real H.264 encoding. The command used for the deployment branch is:
+
+\begin{lstlisting}[language=bash]
+python -m pytest \
+  tests/test_frame_checker.py tests/test_production_quality.py \
+  tests/test_provider_selection.py tests/test_render_failfast.py \
+  tests/test_video_quality.py tests/test_validation.py \
+  tests/test_student_analyzer.py -q
+\end{lstlisting}
+
+A passing unit suite establishes that the code meets the tested contracts. It does not establish educational effectiveness. A publication evaluation should additionally include expert factual review, student comprehension measures, accessibility review, cost records, and failure analysis.
+\section{Deployment, Privacy, and Operational Boundaries}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+ node distance=7mm and 12mm,
+ box/.style={draw=navy,rounded corners=3pt,fill=pale,text width=30mm,minimum height=10mm,align=center,font=\small},
+ store/.style={cylinder,shape border rotate=90,aspect=0.28,draw=teal,fill=soft,text width=23mm,minimum height=13mm,align=center,font=\small},
+ arr/.style={-{Latex[length=2mm]},thick,draw=navy}
+]
+\node[box] (browser) {Student browser\\question + session key};
+\node[box,right=of browser] (streamlit) {Streamlit app\\Python 3.12};
+\node[box,right=of streamlit] (provider) {Selected provider API\\generated artifacts};
+\node[store,below=11mm of streamlit] (state) {temporary\\session state};
+\node[box,left=of state] (github) {GitHub repository\\code, no visitor keys};
+\node[box,right=of state] (download) {User downloads\\JSON or MP4};
+\draw[arr] (browser)--node[above,font=\scriptsize]{TLS}(streamlit);
+\draw[arr] (streamlit)--node[above,font=\scriptsize]{API request}(provider);
+\draw[arr] (provider)--node[below,font=\scriptsize]{response}(streamlit);
+\draw[arr] (streamlit)--(state);
+\draw[arr] (github)--node[above,font=\scriptsize]{deploy}(streamlit);
+\draw[arr] (state)--(download);
+\end{tikzpicture}
+\caption{Deployment and data path. The project does not intentionally persist visitor keys; external providers still receive the requests authorized by those keys.}
+\label{fig:deployment}
+\end{figure}
+
+The public deployment uses the \href{https://github.com/allanzhang721/AiLessonStudio}{AiLessonStudio repository}. Its production coordinates are branch \texttt{agent/}\allowbreak\texttt{streamlit-production}, entrypoint \texttt{streamlit\_app.py}, and Python 3.12. Streamlit Community Cloud installs dependencies from the repository and supports configuration of Python and secrets through its deployment settings \citep{streamlitDeploy,streamlitSecrets}. The current visitor flow does not require a repository secret because the visitor provides one session key.
+
+The password-style field reduces accidental display but is not a complete security boundary. The key is passed to the chosen provider client. Students should use restricted keys, set provider-side budgets, avoid entering personal information in prompts, and revoke a key they believe was exposed. School deployments should perform their own privacy, consent, procurement, and retention review.
+
+\section{Source and Figure Provenance}
+
+Table~\ref{tab:provenance} records where each kind of paper evidence comes from. This is important because a system diagram, an experiment plot, and an external research claim have different evidentiary status.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\linewidth}{@{}p{0.25\linewidth}Y Y@{}}
+\toprule
+\textbf{Artifact} & \textbf{Source} & \textbf{Interpretation} \\
+\midrule
+Figures~\ref{fig:architecture}--\ref{fig:deployment} & Drawn in TikZ from the production source code and deployment configuration & Explanatory system diagrams; not experimental observations \\
+Figure~\ref{fig:offlineplots} & Repository plotting outputs and saved benchmark values & Offline method comparison on recorded tasks \\
+Table~\ref{tab:benchmarks} & \code{pipeline/gate\_benchmarks.py} & Distilled values used by the public dashboard \\
+Gate equations & \code{quality\_gates.py}, \code{frame\_checker.py}, and \code{video\_pipeline.py} & Exact implementation as of the paper version \\
+Learning rationale & Cited books, peer-reviewed articles, and public standards & Motivation for design choices, not a direct evaluation of this app \\
+Setup instructions & Repository files and official Streamlit documentation & Reproducibility and deployment procedure \\
+\bottomrule
+\end{tabularx}
+\caption{Evidence and figure provenance. No generated stock artwork is used in the technical diagrams.}
+\label{tab:provenance}
+\end{table}
+
+\section{Limitations and Threats to Validity}
+
+\paragraph{Shared-model bias.} A generator and semantic reviewer from related model families can share mistakes. The second call is a structured audit, not independent expert replication.
+
+\paragraph{Proxy measurements.} Brightness, contrast, and edge variation detect technical defects but do not establish scientific correctness. Likewise, an image--caption benchmark does not measure the learning value of a seven-frame lesson.
+
+\paragraph{Threshold selection.} The production thresholds are transparent engineering defaults. They have not been calibrated on a representative sample of teacher-rated generated lessons. Appendix~\ref{app:thresholds} lists each threshold so it can be challenged and replaced.
+
+\paragraph{Dataset mismatch.} Gate 1 offline models classify error categories. Gate 2 offline models use Flickr8k alignment. Neither dataset estimates the probability that a new lesson improves high-school comprehension.
+
+\paragraph{Provider dependence.} Model behavior, availability, price, and policy can change. The paper records product logic rather than promising a permanent provider capability.
+
+\paragraph{Accessibility and language.} The interface supports multiple output languages, but the structural word rules are based on English alphabetic tokens. Caption readability metrics do not replace screen-reader, color-contrast, hearing-access, or multilingual review.
+
+\paragraph{No classroom trial.} We have not yet reported a randomized or controlled student study. The correct next publication step is an evaluation with teachers and learners, not stronger language about the current benchmarks.
+
+\section{Recommended Publication Evaluation}
+
+We recommend a preregistered evaluation with three layers.
+\begin{enumerate}
+  \item \textbf{Artifact review:} subject teachers rate factual accuracy, missing conditions, grade appropriateness, and diagram correctness for a stratified set of questions.
+  \item \textbf{System review:} measure latency, provider cost, gate pass rate, repair rate, false blocks, missed errors, and failure recovery.
+  \item \textbf{Learner study:} compare an approved text lesson, an approved text-plus-video lesson, and a textbook/control condition using immediate and delayed questions. Record prior knowledge and avoid claiming personalization from one quiz.
+\end{enumerate}
+
+For gate calibration, teachers should label individual failure types and final usability independently. We can then choose thresholds on a validation split and report confidence intervals on a held-out test split. Precision and recall should be reported for the harmful-artifact class because missing a bad lesson and unnecessarily blocking a good lesson have different costs.
 
 \section{Conclusion}
 
-We built \product\ as a staged lesson studio rather than a one-call content generator. The system separates explanation, evidence, visuals, assessment, and connected study. Gate 1 checks the explanation before expensive work. Gate 2 checks seven frames locally and uses at most one semantic contact-sheet call. The video path composes images and narration instead of using direct video generation. Regeneration gives the user control after completion, and the concept map turns one answer into a sourced path toward related topics.
+We built \product\ as a staged lesson studio because generated educational artifacts fail in different ways and because later media stages are costly. Gate 1 checks the explanation before research and images. Gate 2 checks every frame before final composition. The video path keeps seven inspectable images, stable captions, controlled timing, and a recoverable intermediate state. The app adds sources, misconceptions, practice, related concepts, regeneration, and a visible quality report around the generated explanation.
 
-The main design lesson is simple. More model complexity does not automatically produce a better educational product. We use trained experiments to understand alternatives, local checks to catch cheap failures, semantic review where meaning matters, and visible states so the student can tell what happened. This combination keeps the application light enough to deploy while making its decisions easier to inspect.
+The central lesson is not that more checking guarantees truth. It is that narrow checks, placed at the right boundaries, make failures cheaper to detect and easier to explain. The offline classifiers remain useful comparisons. The live gates remain engineering controls. Teacher and student evaluation remains necessary. Keeping these statements separate makes the project easier to reproduce, criticize, and improve.
 
-\section*{Document Note}
+\appendix
+\section{Mathematical Appendix: Gate and Timing Equations}
+\label{app:math}
 
-This white paper reflects the application state in August 2026. Generative AI was used to assist with organization, grammar, and readability. The project implementation, experiment records, and final claims were reviewed against the repository state. The uploaded SLaTR manuscript was used only as a reference for writing habits and sentence structure; no technical wording or claims were copied from it.
+This appendix begins with the required high-school mathematics and then states the implementation exactly.
 
-\begin{thebibliography}{9}
-\bibitem{mayer2009} R. E. Mayer. \emph{Multimedia Learning}. Cambridge University Press, second edition, 2009.
-\bibitem{kasneci2023} E. Kasneci et al. ``ChatGPT for good? On opportunities and challenges of large language models for education.'' \emph{Learning and Individual Differences}, 103:102274, 2023.
-\bibitem{sanh2019} V. Sanh et al. ``DistilBERT, a distilled version of BERT: smaller, faster, cheaper and lighter.'' arXiv:1910.01108, 2019.
-\bibitem{devlin2019} J. Devlin et al. ``BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding.'' NAACL-HLT, 2019.
-\bibitem{liu2019} Y. Liu et al. ``RoBERTa: A Robustly Optimized BERT Pretraining Approach.'' arXiv:1907.11692, 2019.
-\bibitem{radford2021} A. Radford et al. ``Learning Transferable Visual Models From Natural Language Supervision.'' ICML, 2021.
-\bibitem{hodosh2013} M. Hodosh, P. Young, and J. Hockenmaier. ``Framing Image Description as a Ranking Task.'' \emph{Journal of Artificial Intelligence Research}, 47:853--899, 2013.
-\end{thebibliography}
+\subsection{A short primer}
+
+A \emph{weighted average} is like a course grade in which categories have different importance. If homework counts for 30\% and an exam counts for 70\%, the grade is $0.30H+0.70E$. Our visual score uses the same idea. An \emph{indicator} $\ind{A}$ equals 1 when statement $A$ is true and 0 otherwise. Indicators let us write several pass rules in one equation. A \emph{threshold} is a boundary: a score passes when it is at least the threshold. Thresholds trade false acceptance against false rejection.
+
+\subsection{Gate 1}
+
+Let the five rubric scores be
+\[
+\mathbf{s}=(s_a,s_c,s_l,s_g,s_r), \qquad s_d\in\{1,2,3,4\},
+\]
+for accuracy, completeness, logical flow, grade fit, and clarity/readability. The displayed score is
+\begin{equation}
+S_1=\frac{s_a+s_c+s_l+s_g+s_r}{20}.
+\end{equation}
+Let $J$ be the number of local issues. The exact pass indicator is
+\begin{equation}
+P_1=\ind{J=0}\ind{s_a=4}\ind{\min(s_c,s_l,s_g,s_r)\ge 3}\ind{b=1},
+\end{equation}
+where $b$ is the semantic reviewer's explicit Boolean decision. Requiring both numeric rules and $b=1$ guards against an internally inconsistent response.
+
+\paragraph{Worked example.} Suppose the scores are $(4,3,3,4,3)$. Then
+\[
+S_1=\frac{4+3+3+4+3}{20}=\frac{17}{20}=0.85.
+\]
+If $J=0$ and $b=1$, the explanation passes. Now suppose the scores are $(3,4,4,4,4)$. The average is $19/20=0.95$, but the explanation fails because accuracy is not 4. This shows why an average alone is not the decision.
+
+The maximum semantic call count is
+\begin{equation}
+N_{\mathrm{calls},1}\le 1+R_{\max}=2,
+\end{equation}
+with $R_{\max}=1$. A repair occurs only after a failed first review that supplies a nonempty revision.
+
+\subsection{Gate 2 technical score}
+
+Define the clipping function
+\begin{equation}
+\clip(x)=\max(0,\min(1,x))
+\end{equation}
+and the range score
+\begin{equation}
+\rho(x;a,b)=\clip\left(\frac{x-a}{b-a}\right), \qquad b>a.
+\end{equation}
+For frame $i$, let $w_i,h_i$ be dimensions, $\mu_i$ mean grayscale brightness, $\sigma_i$ grayscale standard deviation, $e_i$ edge-map standard deviation, and $c_i$ caption-band standard deviation. The five component scores are
+\begin{align}
+r_i &= \begin{cases}1,&w_i\ge1200\text{ and }h_i\ge800,\\0.4,&\text{otherwise},\end{cases}\\
+x_i &= \min\{\rho(\mu_i;18,70),\rho(255-\mu_i;18,70)\},\\
+q_i &= \rho(\sigma_i;18,60),\\
+d_i &= \rho(e_i;14,46),\\
+b_i &= \rho(c_i;8,28).
+\end{align}
+The frame score is
+\begin{equation}
+t_i=0.20r_i+0.20x_i+0.25q_i+0.25d_i+0.10b_i.
+\end{equation}
+The weights sum to 1, so $t_i\in[0,1]$. For $n=7$ frames,
+\begin{equation}
+T=\frac{1}{n}\sum_{i=1}^{n}t_i,
+\qquad
+P_T=\ind{T\ge0.42}\prod_{i=1}^{n}\ind{t_i\ge0.42}.
+\end{equation}
+The product equals 1 only when every frame passes.
+
+\paragraph{Worked example.} Suppose one frame has component scores $(1.00,0.80,0.70,0.60,0.90)$. Then
+\[
+t_i=0.20(1)+0.20(0.8)+0.25(0.7)+0.25(0.6)+0.10(0.9)=0.775.
+\]
+It passes the technical threshold. If the seven-frame mean is $0.78$ but one other frame scores $0.39$, the set fails because the all-frame rule catches the weak step.
+
+\subsection{Gate 2 semantic and combined score}
+
+Let the five semantic rubric scores be $v_k\in\{1,2,3,4\}$. Then
+\begin{equation}
+M=\frac{1}{20}\sum_{k=1}^{5}v_k,
+\qquad
+S_2=0.35T+0.65M.
+\end{equation}
+If $v_a$ denotes semantic accuracy, the final pass rule is
+\begin{equation}
+P_2=P_T\ind{v_a=4}\ind{\min_k v_k\ge3}\ind{b_2=1}\ind{S_2\ge0.65}.
+\end{equation}
+For example, $T=0.78$ and rubric scores $(4,3,3,4,3)$ give $M=0.85$ and
+\[
+S_2=0.35(0.78)+0.65(0.85)=0.8255.
+\]
+The set passes if the Boolean and all-frame rules also pass. As in Gate 1, the combined number cannot override a required dimension.
+
+\subsection{Expected cost of the cascade}
+
+Equation~\eqref{eq:expected-cost} assumes that later stages run conditionally. With illustrative units $C_T=1$, $C_R=1$, $C_I=7$, $C_V=2$, $p_1=0.8$, and $p_2=0.9$,
+\[
+\mathbb{E}[C]=1+0.8(1+7)+(0.8)(0.9)(2)=8.84.
+\]
+Always running every stage would cost $1+1+7+2=11$ units. The difference, 2.16 units in this toy example, comes from not processing blocked artifacts. These are illustrative units, not provider prices.
+
+\subsection{Narration-aware scene duration}
+
+Let $n$ be the number of captions and
+\begin{equation}
+w_i=\max(5,\text{caption word count}_i).
+\end{equation}
+If measured narration duration $A$ is available, define
+\begin{equation}
+D=\max(A+0.65,3.2n).
+\end{equation}
+Otherwise the code estimates
+\begin{equation}
+A=\max\left(3.2n,\frac{\sum_i w_i}{2.35}+1.2\right)
+\end{equation}
+and applies the same $D$ rule. Starting from a 3.2-second floor, the duration of scene $i$ is
+\begin{equation}
+d_i=3.2+\max(0,D-3.2n)\frac{w_i}{\sum_j w_j}.
+\end{equation}
+Thus every scene receives reading time, while wordier captions receive a larger share of the remaining duration.
+
+\section{Evaluation Metrics and a Worked Confusion Matrix}
+
+For binary labels, let TP, TN, FP, and FN denote true positives, true negatives, false positives, and false negatives. Then
+\begin{align}
+\mathrm{Accuracy}&=\frac{TP+TN}{TP+TN+FP+FN},\\
+\mathrm{Precision}&=\frac{TP}{TP+FP},\\
+\mathrm{Recall}&=\frac{TP}{TP+FN},\\
+\mathrm{F1}&=\frac{2\,\mathrm{Precision}\,\mathrm{Recall}}{\mathrm{Precision}+\mathrm{Recall}}.
+\end{align}
+If a checker sees 100 examples with $TP=36$, $TN=54$, $FP=6$, and $FN=4$, then accuracy is $0.90$, precision is $36/42\approx0.857$, recall is $36/40=0.90$, and F1 is approximately $0.878$. AUROC is the area under the curve traced by true-positive rate against false-positive rate as the decision threshold changes \citep{fawcett2006roc}.
+
+For the multiclass Gate 1 experiment, precision, recall, and F1 are aggregated over error classes by the experiment code. A publication should state whether an average is macro, micro, or weighted whenever the raw report is used. The distilled dashboard values should not be reverse-engineered into class counts because those counts are not stored in the production summary.
+
+\section{Threshold and Rubric Registry}
+\label{app:thresholds}
+
+\begin{longtable}{@{}p{0.28\linewidth}p{0.18\linewidth}p{0.46\linewidth}@{}}
+\toprule
+\textbf{Rule} & \textbf{Current value} & \textbf{Reason and limitation} \\
+\midrule
+\endhead
+Gate 1 word window & 70--420 & Rejects very thin or unfocused English explanations; not a multilingual reading standard. \\
+Mean sentence length & $\le27$ words & Flags dense prose; does not compute a validated readability grade. \\
+Gate 1 accuracy & $=4/4$ & Treats factual correctness as noncompensatory; still depends on the review model. \\
+Other Gate 1 dimensions & $\ge3/4$ & Requires acceptable completeness, flow, grade fit, and clarity. \\
+Maximum repairs & 1 & Bounds cost and prevents open-ended self-revision. \\
+Technical frame threshold & 0.42 & Screens severe render defects before semantic review. \\
+Gate 2 combined threshold & 0.65 & Engineering acceptance boundary after required component rules. \\
+Gate 2 weights & 0.35 / 0.65 & Gives semantic meaning more weight than pixel quality; not learned from outcomes. \\
+Minimum scene duration & 3.2 s & Provides a reading and transition floor; accessibility testing is still needed. \\
+Narration pace estimate & 2.35 words/s & Fallback timing heuristic used only when measured audio is absent. \\
+\bottomrule
+\caption{Current thresholds reproduced from the implementation.}
+\end{longtable}
+
+\section{Detailed Deployment Checklist}
+
+\begin{enumerate}
+  \item Fork or obtain administrator access to the GitHub repository.
+  \item Confirm that \code{streamlit\_app.py}, \code{requirements.txt}, and \code{.python-version} are present.
+  \item Run the deployment test command from the test protocol in the main text on Python 3.12.
+  \item Open \url{https://share.streamlit.io/} and authenticate with the repository-owning GitHub account.
+  \item Choose repository \code{allanzhang721/AiLessonStudio}.
+  \item Choose branch \code{agent/streamlit-production}.
+  \item Set entrypoint \code{streamlit\_app.py} and Python 3.12.
+  \item Do not add a shared provider key unless the deployment owner intends to pay for visitor requests. The current interface accepts one visitor-owned key.
+  \item Deploy, inspect build logs, open the public URL, and confirm visibility settings permit the intended audience.
+  \item Test both providers: OpenAI should expose text, research, image model, and voice controls; DeepSeek should expose text controls and disable video.
+  \item Generate a text-only lesson, an illustrated lesson, a failed-key request, a Gate 1 repair, and a visual regeneration.
+  \item Record the Git commit, date, provider models, and any calibrated thresholds with published results.
+\end{enumerate}
+
+Official Streamlit guidance recommends declaring dependencies, selecting the intended Python version, and keeping secrets outside the repository \citep{streamlitDeploy,streamlitSecrets}. Repository credentials are required to configure the hosted app; a source-code commit alone cannot change an account's cloud visibility.
+
+\section{Paper Reproduction and Version Statement}
+
+Compile the paper from the repository root with:
+\begin{lstlisting}[language=bash]
+cd docs/whitepaper
+pdflatex visual_lesson_ai_paper.tex
+bibtex visual_lesson_ai_paper
+pdflatex visual_lesson_ai_paper.tex
+pdflatex visual_lesson_ai_paper.tex
+\end{lstlisting}
+The compilation expects the PNG experiment figures in \code{../../paper\_figures/}. All architecture and process diagrams are embedded as TikZ source in this file. The output should be archived together with the source, bibliography, figure files, software commit, and a short change log.
+
+This white paper describes the code state in August 2026. Generative AI assisted with organization, editing, and diagram planning. The authors remain responsible for checking the implementation claims, citations, equations, and publication permissions. The uploaded SLaTR manuscript was consulted only for general writing habits and exposition structure. It is marked as an anonymous submission whose sharing is prohibited, so it is neither cited as technical evidence nor reproduced.
+
+\bibliographystyle{plainnat}
+\bibliography{references}
 
 \end{document}
