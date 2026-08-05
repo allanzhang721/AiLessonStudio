@@ -616,21 +616,21 @@ def main() -> None:
         st.markdown("## Create a lesson")
 
         with st.container():
-            st.markdown("### 1. Connect one provider")
+            st.markdown("### 1. Connect your models")
             provider_label = st.selectbox(
-                "AI provider",
+                "Text provider",
                 list(TEXT_PROVIDERS),
-                help="Choose one provider. The single key below is reused for every supported capability.",
+                help="Choose the model provider that will write and check the lesson.",
             )
             provider_config = TEXT_PROVIDERS[provider_label]
             text_model_label = st.selectbox("Text model", list(provider_config["models"]))
             text_model = provider_config["models"][text_model_label]
             api_key = st.text_input(
-                f"{provider_label} API key",
+                "Text API key",
                 type="password",
                 key=f"visitor_api_key_{provider_config['id']}",
                 help=provider_config["key_help"],
-                placeholder="Paste one key - session only",
+                placeholder=f"Paste your {provider_label} key - session only",
             )
             text_label = provider_label
             text_config = provider_config
@@ -638,30 +638,63 @@ def main() -> None:
             research_enabled = st.toggle(
                 "Add cited web research",
                 value=True,
-                help="Uses this same API key. Grounded citations appear when the selected provider supports web search.",
+                help="Uses this same text API key. Grounded citations appear when the selected provider supports web search.",
             )
-            provider_supports_video = provider_label == "OpenAI"
-            create_video = st.toggle(
-                "Create illustrated MP4",
-                value=provider_supports_video,
-                disabled=not provider_supports_video,
-                key=f"create_video_{provider_config['id']}",
-                help="OpenAI reuses this one key for seven images and narration. Text-only providers cannot create video.",
-            )
-            if not provider_supports_video:
-                st.info("This provider currently supports text lessons only. Choose OpenAI to create images, narration, and MP4 with the same single key.")
 
             image_label = "OpenAI"
             image_config = IMAGE_PROVIDERS[image_label]
             image_model_label = next(iter(image_config["models"]))
             image_model = image_config["models"][image_model_label]
-            image_key = api_key if create_video else ""
-            narration_key = api_key if create_video else ""
+            image_key = ""
+            narration_key = ""
             narration_voice = "marin"
+            provider_supports_video = provider_label == "OpenAI"
+
+            if provider_supports_video:
+                create_video = st.toggle(
+                    "Create illustrated MP4",
+                    value=True,
+                    key="create_video_openai",
+                    help="The text key is reused for seven images and OpenAI narration.",
+                )
+                image_key = api_key if create_video else ""
+                narration_key = api_key if create_video else ""
+            else:
+                st.warning(
+                    f"{provider_label} is text-only in this app and cannot generate images or narration. "
+                    "You can still create the written lesson, or optionally connect OpenAI for the visual video."
+                )
+                add_image_api = st.toggle(
+                    "Add image API (optional)",
+                    value=False,
+                    key=f"add_image_api_{provider_config['id']}",
+                    help="Adds a separate provider only for images, visual checking, and narration.",
+                )
+                create_video = add_image_api
+                if add_image_api:
+                    image_label = st.selectbox(
+                        "Image provider",
+                        ["OpenAI"],
+                        help="OpenAI currently supplies both the lesson images and narration required for the MP4.",
+                    )
+                    image_config = IMAGE_PROVIDERS[image_label]
+                    image_api_key = st.text_input(
+                        "Image API key",
+                        type="password",
+                        key=f"visitor_image_api_key_{provider_config['id']}_{image_config['id']}",
+                        help="A separate OpenAI key with image-model access. It is also used for narration and the visual semantic check.",
+                        placeholder="Paste your OpenAI image key - session only",
+                    )
+                    image_key = image_api_key
+                    narration_key = image_api_key
+
             if create_video:
                 image_model_label = st.selectbox("Image model", list(image_config["models"]))
                 image_model = image_config["models"][image_model_label]
-                st.caption("Images and narration reuse the same OpenAI key entered above.")
+                if provider_supports_video:
+                    st.caption("Images and narration reuse the OpenAI text key entered above.")
+                else:
+                    st.caption("The optional OpenAI key is used only for images, visual checking, and narration; DeepSeek still writes the lesson.")
                 st.warning("Seven image calls may incur noticeable cost and take several minutes.")
                 narration_voice = st.selectbox(
                     "Teaching voice",
@@ -669,12 +702,13 @@ def main() -> None:
                     help="Marin and cedar are recommended for the clearest narration.",
                 )
                 st.caption("The narration voice is AI-generated, not a human recording.")
-
-            keys_ready = bool(api_key.strip())
+            keys_ready = bool(api_key.strip()) and (not create_video or bool(image_key.strip()))
             if keys_ready:
                 st.success("API setup ready")
+            elif api_key.strip() and create_video:
+                st.info("Enter the optional image API key, or turn off the image API option.")
             else:
-                st.info("Enter one API key to unlock generation.")
+                st.info("Enter your text API key to unlock generation.")
 
             st.divider()
             st.markdown("### 2. Describe the lesson")
@@ -709,7 +743,7 @@ def main() -> None:
                     narration_voice=narration_voice,
                     research_enabled=research_enabled,
                 )
-            st.caption("Your single API key stays in this Streamlit session. It is never written to files, logs, or environment variables.")
+            st.caption("Your API keys stay in this Streamlit session. They are never written to files, logs, or environment variables.")
 
     st.markdown("<div class='hero'><h1>VisualLesson AI</h1><p>Clear explanations, visual stories, and feedback built for high-school learners.</p></div>", unsafe_allow_html=True)
     bundle = st.session_state.bundle
