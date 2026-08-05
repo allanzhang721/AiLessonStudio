@@ -20,7 +20,7 @@ from .api_keys import get_key
 from .config import DEEPSEEK_BASE_URL
 
 
-def build_text_client(provider: str = "openai"):
+def build_text_client(provider: str = "openai", api_key: Optional[str] = None):
     """Return an OpenAI-compatible client for text generation.
 
     Both OpenAI and DeepSeek use the same ``openai.OpenAI`` SDK — DeepSeek
@@ -32,13 +32,13 @@ def build_text_client(provider: str = "openai"):
         return None
 
     if provider == "openai":
-        key = get_key("OPENAI_API_KEY")
+        key = api_key or get_key("OPENAI_API_KEY")
         if not key:
             return None
         return OpenAI(api_key=key)
 
     if provider == "deepseek":
-        key = get_key("DEEPSEEK_API_KEY")
+        key = api_key or get_key("DEEPSEEK_API_KEY")
         if not key:
             return None
         return OpenAI(api_key=key, base_url=DEEPSEEK_BASE_URL)
@@ -46,7 +46,7 @@ def build_text_client(provider: str = "openai"):
     return None
 
 
-def build_image_client(provider: str = "openai"):
+def build_image_client(provider: str = "openai", api_key: Optional[str] = None):
     """Return a client for image generation.
 
     OpenAI: standard OpenAI client (images.generate / images.edit).
@@ -60,7 +60,7 @@ def build_image_client(provider: str = "openai"):
         OpenAI = None  # type: ignore[assignment]
 
     if provider == "openai":
-        key = get_key("OPENAI_API_KEY")
+        key = api_key or get_key("OPENAI_API_KEY")
         if not key or OpenAI is None:
             return None
         return OpenAI(api_key=key)
@@ -75,7 +75,7 @@ def build_image_client(provider: str = "openai"):
     return None
 
 
-def build_video_client(provider: str = "sora"):
+def build_video_client(provider: str = "sora", api_key: Optional[str] = None):
     """Return a client for video generation."""
     try:
         from openai import OpenAI
@@ -83,7 +83,7 @@ def build_video_client(provider: str = "sora"):
         OpenAI = None  # type: ignore[assignment]
 
     if provider == "sora":
-        key = get_key("OPENAI_API_KEY")
+        key = api_key or get_key("OPENAI_API_KEY")
         if not key or OpenAI is None:
             return None
         return OpenAI(api_key=key)
@@ -97,14 +97,14 @@ def build_video_client(provider: str = "sora"):
     return None
 
 
-def build_tts_client():
+def build_tts_client(api_key: Optional[str] = None):
     """Return an OpenAI client for TTS. Only OpenAI supported currently."""
     try:
         from openai import OpenAI
     except ImportError:
         return None
 
-    key = get_key("OPENAI_API_KEY")
+    key = api_key or get_key("OPENAI_API_KEY")
     if not key:
         return None
     return OpenAI(api_key=key)

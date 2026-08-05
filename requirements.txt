@@ -1,9 +1,5 @@
-openai>=1.0.0
-Pillow>=10.0.0
-imageio>=2.34.0
-imageio-ffmpeg>=0.5.1
-streamlit>=1.38.0
-torch>=2.0.0
-transformers>=4.30.0
-safetensors>=0.4.0
-matplotlib>=3.8.0
+openai>=2.8.0,<3
+Pillow>=10.0.0,<13
+imageio>=2.34.0,<3
+imageio-ffmpeg>=0.5.1,<1
+streamlit>=1.50.0,<2

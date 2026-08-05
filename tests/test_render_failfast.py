@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from l15_pipeline.image_pipeline import plan_to_images
+from pipeline.image_pipeline import plan_to_images
 
 
 class RenderFailFastTests(unittest.TestCase):

@@ -19,9 +19,9 @@ MIN_BOTTOM_BAND = 320   # height of the white caption band added below each fram
 
 # --- Provider-specific model names ---
 # OpenAI
-OPENAI_TEXT_MODEL = "gpt-4o"       # text model: planning, explanations, repair
-OPENAI_IMAGE_MODEL = "gpt-image-1" # image model: frame generation / inpainting
-OPENAI_TTS_MODEL = "gpt-4o-mini-tts"
+OPENAI_TEXT_MODEL = "gpt-5.6-terra"  # balanced quality/cost for student-facing lessons
+OPENAI_IMAGE_MODEL = "gpt-image-2"   # current production image model
+OPENAI_TTS_MODEL = "tts-1"           # broadly available speech endpoint
 OPENAI_TTS_VOICE = "alloy"
 OPENAI_VIDEO_MODEL = "sora-2"
 

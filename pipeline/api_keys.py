@@ -42,8 +42,19 @@ _load()
 
 
 def get_key(name: str) -> str:
-    """Return an API key by name.  Environment overrides file."""
-    return os.environ.get(name, "") or _keys.get(name, "")
+    """Return a key from environment, Streamlit secrets, or the local dev file."""
+    value = os.environ.get(name, "")
+    if value:
+        return value
+    try:
+        import streamlit as st
+
+        value = str(st.secrets.get(name, ""))
+        if value:
+            return value
+    except Exception:
+        pass
+    return _keys.get(name, "")
 
 
 def has_key(name: str) -> bool:

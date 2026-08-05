@@ -77,13 +77,15 @@ def synthesize_clean_voiceover(client, plan: dict, out_dir: Path) -> Optional[Pa
         "No background music, no ambient sounds, no sound effects, narration voice only."
     )
     try:
-        response = client.audio.speech.create(
-            model=TTS_MODEL,
-            voice=TTS_VOICE,
-            input=script,
-            instructions=instructions,
-            format="mp3",
-        )
+        speech_args = {
+            "model": TTS_MODEL,
+            "voice": TTS_VOICE,
+            "input": script,
+            "response_format": "mp3",
+        }
+        if TTS_MODEL not in {"tts-1", "tts-1-hd"}:
+            speech_args["instructions"] = instructions
+        response = client.audio.speech.create(**speech_args)
         if hasattr(response, "stream_to_file"):
             response.stream_to_file(str(audio_path))
         elif hasattr(response, "read"):

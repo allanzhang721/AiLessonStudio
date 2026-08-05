@@ -39,7 +39,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from .checker import checker1_loop
+from .quality_gates import review_explanation
 from .clients import build_text_client, build_image_client, build_tts_client
 from .config import (
     DEFAULT_ROOT,
@@ -48,7 +48,7 @@ from .config import (
     OPENAI_IMAGE_MODEL,
     WANX_IMAGE_MODEL,
 )
-from .frame_checker import checker2_validate_frames
+from .frame_checker import checker2_validate_lesson_frames
 from .image_pipeline import plan_to_images
 from .planner import question_explanation_grade_to_plan
 from .utils import ensure_dir, make_gif, save_json, save_text
@@ -85,6 +85,7 @@ def run_pipeline(
     checker2_backend: str = "heuristic",
     text_provider: str = "openai",
     image_provider: str = "openai",
+    api_key: Optional[str] = None,
 ) -> dict:
     """
     End-to-end pipeline:
@@ -96,9 +97,9 @@ def run_pipeline(
     t0 = time.time()
 
     # Build per-stage clients via the centralised client factory
-    text_client = build_text_client(text_provider) if run_openai else None
-    image_client = build_image_client(image_provider) if run_openai else None
-    tts_client = build_tts_client() if run_openai else None
+    text_client = build_text_client(text_provider, api_key=api_key) if run_openai else None
+    image_client = build_image_client(image_provider, api_key=api_key) if run_openai else None
+    tts_client = build_tts_client(api_key=api_key) if run_openai else None
 
     text_model = _model_for_text_provider(text_provider)
     image_model = _model_for_image_provider(image_provider)
@@ -110,21 +111,24 @@ def run_pipeline(
     if run_checker:
         t_checker = time.time()
         try:
-            checker_result = checker1_loop(
+            checker_result = review_explanation(
                 client=text_client,
+                model=text_model,
                 question=question,
                 explanation=explanation,
                 grade=grade,
                 subject=subject,
-                max_rounds=checker_max_rounds,
-                confidence_threshold=checker_confidence_threshold,
-                model=text_model,
+                max_repairs=max(0, min(2, checker_max_rounds - 1)),
             )
             if checker_result["was_revised"]:
                 explanation = checker_result["final_explanation"]
         except Exception as exc:
             checker_result = {"error": str(exc), "was_revised": False, "rounds": [], "total_rounds": 0, "final_explanation": explanation}
         stage_times["checker_seconds"] = round(time.time() - t_checker, 3)
+        if not checker_result or not checker_result.get("pass"):
+            issues = "; ".join((checker_result or {}).get("issues", [])[:3])
+            raise ValueError(f"Explanation quality gate blocked media generation: {issues or 'review unavailable'}")
+
 
     t_plan = time.time()
     plan = question_explanation_grade_to_plan(
@@ -156,10 +160,12 @@ def run_pipeline(
     if run_checker2:
         t_checker2 = time.time()
         try:
-            checker2_result = checker2_validate_frames(
+            checker2_result = checker2_validate_lesson_frames(
                 frames,
+                plan=plan,
+                client=text_client if text_provider == "openai" else None,
+                model=text_model,
                 threshold=checker2_threshold,
-                backend=checker2_backend,
             )
         except Exception as exc:
             checker2_result = {

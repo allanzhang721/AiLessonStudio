@@ -14,6 +14,7 @@ __pycache__/
 # Do not sync this file to version control.
 # It should be created locally with the necessary API keys and secrets for development.
 api_keys.txt
+.streamlit/secrets.toml
 
 # Keep checker1/model under version control (via Git LFS), ignore other checker1 content.
 checker1/*
@@ -21,21 +22,6 @@ checker1/*
 !checker1/model/**
 checker1/model/**/.DS_Store
 
-# Checker 2
-checker2/*
-!checker2/model/**
-
 # Generated media and render outputs
 output/
-
-#Others
-papers/
-
-
-
-# Local run logs
-logs/
-
-# Local context snapshots
-docs/context/
 
