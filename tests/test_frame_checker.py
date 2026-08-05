@@ -1,10 +1,12 @@
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 from PIL import Image
 
 from pipeline.frame_checker import checker2_validate_frames, checker2_validate_lesson_frames
+from pipeline.pipeline import run_pipeline
 
 
 class FrameCheckerTests(unittest.TestCase):
@@ -58,6 +60,30 @@ class FrameCheckerTests(unittest.TestCase):
             self.assertEqual(result["mode"], "technical_block")
             self.assertEqual(result["metrics"]["model_calls"], 0)
 
+    def test_gate2_result_is_published_before_later_media_failure(self):
+        gate_result = {"pass": True, "overall_score": 0.9, "mode": "technical_only"}
+        received = []
+        plan = {
+            "question_id": "callback_test",
+            "question_text": "Why?",
+            "canonical_answer": "Because.",
+            "captions": ["Frame"],
+            "planner_meta": {},
+            "render_meta": {},
+        }
+        with tempfile.TemporaryDirectory() as td, \
+             patch("pipeline.pipeline.question_explanation_grade_to_plan", return_value=plan), \
+             patch("pipeline.pipeline.plan_to_images", return_value=[Path(td) / "frame.png"]), \
+             patch("pipeline.pipeline.checker2_validate_lesson_frames", return_value=gate_result), \
+             patch("pipeline.pipeline.make_gif", return_value=Path(td) / "story.gif"), \
+             patch("pipeline.pipeline.synthesize_clean_voiceover", side_effect=RuntimeError("audio failed")):
+            with self.assertRaisesRegex(RuntimeError, "audio failed"):
+                run_pipeline(
+                    question="Why?", explanation="A sufficiently complete explanation.", grade=10,
+                    output_root=Path(td), run_openai=False, run_checker=False,
+                    gate2_callback=received.append,
+                )
+        self.assertEqual(received, [gate_result])
 
 if __name__ == "__main__":
     unittest.main()
