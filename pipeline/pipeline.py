@@ -85,6 +85,10 @@ def run_pipeline(
     checker2_backend: str = "heuristic",
     text_provider: str = "openai",
     image_provider: str = "openai",
+    text_model: Optional[str] = None,
+    image_model: Optional[str] = None,
+    text_api_key: Optional[str] = None,
+    image_api_key: Optional[str] = None,
     api_key: Optional[str] = None,
 ) -> dict:
     """
@@ -96,13 +100,23 @@ def run_pipeline(
     """
     t0 = time.time()
 
-    # Build per-stage clients via the centralised client factory
-    text_client = build_text_client(text_provider, api_key=api_key) if run_openai else None
-    image_client = build_image_client(image_provider, api_key=api_key) if run_openai else None
-    tts_client = build_tts_client(api_key=api_key) if run_openai else None
+    # Keep visitor credentials separate; never copy them to environment variables.
+    resolved_text_key = text_api_key or api_key
+    resolved_image_key = image_api_key or api_key
+    text_client = build_text_client(text_provider, api_key=resolved_text_key) if run_openai else None
+    image_client = build_image_client(image_provider, api_key=resolved_image_key) if run_openai else None
+    tts_key = resolved_text_key if text_provider == "openai" else (
+        resolved_image_key if image_provider == "openai" else None
+    )
+    tts_client = build_tts_client(api_key=tts_key) if run_openai and tts_key else None
 
-    text_model = _model_for_text_provider(text_provider)
-    image_model = _model_for_image_provider(image_provider)
+    text_model = text_model or _model_for_text_provider(text_provider)
+    image_model = image_model or _model_for_image_provider(image_provider)
+    vision_client = text_client if text_provider == "openai" else (
+        build_text_client("openai", api_key=resolved_image_key)
+        if image_provider == "openai" and resolved_image_key
+        else None
+    )
 
     stage_times: dict[str, float] = {}
 
@@ -163,8 +177,8 @@ def run_pipeline(
             checker2_result = checker2_validate_lesson_frames(
                 frames,
                 plan=plan,
-                client=text_client if text_provider == "openai" else None,
-                model=text_model,
+                client=vision_client,
+                model=text_model if text_provider == "openai" else OPENAI_TEXT_MODEL,
                 threshold=checker2_threshold,
             )
         except Exception as exc:

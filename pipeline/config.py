@@ -26,11 +26,11 @@ OPENAI_TTS_VOICE = "alloy"
 OPENAI_VIDEO_MODEL = "sora-2"
 
 # DeepSeek
-DEEPSEEK_TEXT_MODEL = "deepseek-chat"
+DEEPSEEK_TEXT_MODEL = "deepseek-v4-flash"
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 
 # Alibaba DashScope / Wanx (万象)
-WANX_IMAGE_MODEL = "wanx-v1"
+WANX_IMAGE_MODEL = "wan2.7-image"
 WANX_VIDEO_MODEL = "wanx-v1"
 DASHSCOPE_BASE_URL = "https://dashscope.aliyuncs.com/api/v1"
 

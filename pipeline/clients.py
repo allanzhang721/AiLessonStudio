@@ -66,7 +66,7 @@ def build_image_client(provider: str = "openai", api_key: Optional[str] = None):
         return OpenAI(api_key=key)
 
     if provider == "wanx":
-        key = get_key("DASHSCOPE_API_KEY")
+        key = api_key or get_key("DASHSCOPE_API_KEY")
         if not key:
             return None
         # Return a lightweight wrapper so callers can detect "wanx" provider
@@ -89,7 +89,7 @@ def build_video_client(provider: str = "sora", api_key: Optional[str] = None):
         return OpenAI(api_key=key)
 
     if provider == "wanx":
-        key = get_key("DASHSCOPE_API_KEY")
+        key = api_key or get_key("DASHSCOPE_API_KEY")
         if not key:
             return None
         return {"provider": "wanx", "api_key": key}
@@ -122,7 +122,7 @@ def chat_completion(client, model: str, prompt: str) -> str:
     ``chat.completions.create``.
     """
     # Try the OpenAI Responses API first (available on openai >= 1.66)
-    if hasattr(client, "responses"):
+    if not model.startswith("deepseek-") and hasattr(client, "responses"):
         try:
             resp = client.responses.create(model=model, input=prompt)
             return resp.output_text

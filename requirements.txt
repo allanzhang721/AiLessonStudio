@@ -3,3 +3,4 @@ Pillow>=10.0.0,<13
 imageio>=2.34.0,<3
 imageio-ffmpeg>=0.5.1,<1
 streamlit>=1.50.0,<2
+requests>=2.32.0,<3

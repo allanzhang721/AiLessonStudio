@@ -10,12 +10,47 @@ from typing import Any
 
 import streamlit as st
 
-from pipeline.api_keys import get_key
 from pipeline.clients import build_text_client
-from pipeline.config import OPENAI_TEXT_MODEL
 from pipeline.lesson_service import curated_resources, generate_lesson_bundle
 from pipeline.pipeline import run_pipeline
 from pipeline.quality_gates import review_explanation
+
+
+TEXT_PROVIDERS = {
+    "OpenAI": {
+        "id": "openai",
+        "models": {
+            "GPT-5.6 Terra - balanced": "gpt-5.6-terra",
+            "GPT-5.6 Luna - lower cost": "gpt-5.6-luna",
+            "GPT-5.6 Sol - highest quality": "gpt-5.6-sol",
+        },
+        "key_help": "Create a key at platform.openai.com/api-keys.",
+    },
+    "DeepSeek": {
+        "id": "deepseek",
+        "models": {
+            "DeepSeek V4 Flash - fast/low cost": "deepseek-v4-flash",
+            "DeepSeek V4 Pro - higher quality": "deepseek-v4-pro",
+        },
+        "key_help": "Create a key at platform.deepseek.com/api_keys.",
+    },
+}
+
+IMAGE_PROVIDERS = {
+    "OpenAI": {
+        "id": "openai",
+        "models": {"GPT Image 2 - recommended": "gpt-image-2"},
+        "key_help": "Uses an OpenAI API key with image-model access.",
+    },
+    "Alibaba Wan": {
+        "id": "wanx",
+        "models": {
+            "Wan 2.7 Image - faster": "wan2.7-image",
+            "Wan 2.7 Image Pro - highest quality": "wan2.7-image-pro",
+        },
+        "key_help": "Uses an international Alibaba Model Studio key.",
+    },
+}
 
 
 DEMO_BUNDLE = {
@@ -89,29 +124,43 @@ def _styles() -> None:
     )
 
 
-def _configured_key() -> str:
-    return get_key("OPENAI_API_KEY")
-
-
-def _create_lesson(question: str, subject: str, grade: int, language: str, api_key: str, create_video: bool) -> None:
+def _create_lesson(
+    question: str,
+    subject: str,
+    grade: int,
+    language: str,
+    *,
+    text_provider: str,
+    text_model: str,
+    text_key: str,
+    image_provider: str,
+    image_model: str,
+    image_key: str,
+    create_video: bool,
+) -> None:
     if not question.strip():
         st.error("Enter a question first.")
         return
-    effective_key = api_key.strip() or _configured_key()
-    if not effective_key:
-        st.error("Add an OpenAI API key for this session, or open the demo.")
+    text_key = text_key.strip()
+    image_key = image_key.strip()
+    if not text_key:
+        st.error("Enter your text API key in Step 1.")
         return
-    client = build_text_client("openai", api_key=effective_key)
+    if create_video and not image_key:
+        st.error("Enter your image API key in Step 1, or turn off illustrated MP4.")
+        return
+
+    client = build_text_client(text_provider, api_key=text_key)
     if client is None:
-        st.error("The OpenAI client could not be initialized.")
+        st.error(f"The {text_provider} text client could not be initialized.")
         return
 
     try:
         with st.status("Building your lesson", expanded=True) as status:
-            status.write("Drafting the explanation and quiz...")
+            status.write(f"Drafting with {text_provider}: {text_model}...")
             bundle = generate_lesson_bundle(
                 client,
-                model=OPENAI_TEXT_MODEL,
+                model=text_model,
                 question=question,
                 subject=subject,
                 grade=grade,
@@ -120,7 +169,7 @@ def _create_lesson(question: str, subject: str, grade: int, language: str, api_k
             status.write("Gate 1: checking accuracy, logic, and grade fit...")
             gate1 = review_explanation(
                 client,
-                model=OPENAI_TEXT_MODEL,
+                model=text_model,
                 question=question,
                 explanation=bundle["explanation"],
                 grade=grade,
@@ -128,6 +177,12 @@ def _create_lesson(question: str, subject: str, grade: int, language: str, api_k
                 max_repairs=1,
             )
             bundle["explanation"] = gate1["final_explanation"]
+            bundle["generation"] = {
+                "text_provider": text_provider,
+                "text_model": text_model,
+                "image_provider": image_provider if create_video else None,
+                "image_model": image_model if create_video else None,
+            }
             st.session_state.bundle = bundle
             st.session_state.gate1 = gate1
             st.session_state.pipeline_result = None
@@ -139,7 +194,7 @@ def _create_lesson(question: str, subject: str, grade: int, language: str, api_k
                 return
 
             if create_video:
-                status.write("Planning and illustrating seven teaching steps...")
+                status.write(f"Illustrating seven steps with {image_provider}: {image_model}...")
                 run = run_pipeline(
                     question=question,
                     explanation=bundle["explanation"],
@@ -149,13 +204,19 @@ def _create_lesson(question: str, subject: str, grade: int, language: str, api_k
                     run_openai=True,
                     run_checker=False,
                     run_checker2=True,
-                    text_provider="openai",
-                    image_provider="openai",
-                    api_key=effective_key,
+                    text_provider=text_provider,
+                    image_provider=image_provider,
+                    text_model=text_model,
+                    image_model=image_model,
+                    text_api_key=text_key,
+                    image_api_key=image_key,
                 )
                 st.session_state.pipeline_result = run
                 run_dir = Path(run["out_dir"])
-                (run_dir / "lesson.json").write_text(json.dumps(bundle, ensure_ascii=False, indent=2), encoding="utf-8")
+                (run_dir / "lesson.json").write_text(
+                    json.dumps(bundle, ensure_ascii=False, indent=2),
+                    encoding="utf-8",
+                )
             status.update(label="Lesson ready", state="complete", expanded=False)
     except Exception as exc:
         st.error(f"Lesson generation stopped safely: {exc}")
@@ -168,7 +229,7 @@ def _show_gate(name: str, result: dict[str, Any] | None) -> None:
     passed = bool(result.get("pass"))
     score = result.get("overall_score")
     label = "Passed" if passed else "Needs review"
-    suffix = f" ? {float(score) * 100:.0f}%" if isinstance(score, (int, float)) else ""
+    suffix = f" - {float(score) * 100:.0f}%" if isinstance(score, (int, float)) else ""
     st.markdown(f"<span class=\"{'gate-pass' if passed else 'gate-fail'}\">{name}: {label}{suffix}</span>", unsafe_allow_html=True)
     issues = result.get("issues", [])
     if issues:
@@ -238,202 +299,164 @@ def _quiz_tab(bundle: dict[str, Any]) -> None:
 
 def _resources_tab(subject: str, question: str, bundle: dict[str, Any]) -> None:
     st.markdown("### Trusted starting points")
-    st.caption("These links come from a curated list; the model does not iߞu��$z{-���jם      st.markdown(
-            '<div style="color:#94a3b8;font-size:0.72rem;text-align:center;">'
-            'Built by <strong>Jiaxing BCOS</strong></div>',
-            unsafe_allow_html=True,
+    st.caption("These links come from a curated list; the model does not invent resource URLs.")
+    for resource in curated_resources(subject, question):
+        st.markdown(f"**[{resource['name']}]({resource['url']})**  \n{resource['description']}")
+    st.divider()
+    st.download_button(
+        "Download lesson JSON",
+        json.dumps(bundle, ensure_ascii=False, indent=2),
+        file_name="visual_lesson.json",
+        mime="application/json",
+        use_container_width=True,
+    )
+    result = st.session_state.pipeline_result
+    if result and Path(result["video_path"]).exists():
+        visual_gate = result.get("checker2_result") or {}
+        if visual_gate.get("pass"):
+            st.download_button(
+                "Download MP4 video",
+                Path(result["video_path"]).read_bytes(),
+                file_name="visual_lesson.mp4",
+                mime="video/mp4",
+                use_container_width=True,
+            )
+        else:
+            st.warning("MP4 download is held because Gate 2 marked the visuals as needing review.")
+
+
+def main() -> None:
+    st.set_page_config(page_title="VisualLesson AI", page_icon=":material/school:", layout="wide")
+    _init_state()
+    _styles()
+
+    with st.sidebar:
+        st.markdown("## Create a lesson")
+        mode = st.radio(
+            "Mode",
+            ["API mode", "Demo"],
+            horizontal=True,
+            label_visibility="collapsed",
         )
 
-    # ── MAIN AREA ──
-    st.markdown(
-        '<div class="hero"><h1>VisualLesson AI</h1>'
-        '<p>Turn any question into a classroom-ready visual lesson.</p></div>',
-        unsafe_allow_html=True,
-    )
-
-    tab_lesson, tab_quiz, tab_resources, tab_details = st.tabs(
-        ["📖 Lesson", "📝 Quiz", "📚 Resources", "ℹ️ Details"]
-    )
-
-    # ── TAB: Lesson ──
-    with tab_lesson:
-        explanation_text = str(st.session_state.get("generated_explanation", "")).strip()
-        active_run_dir = st.session_state.get("active_run_dir")
-
-        # ── Step 1: Explanation ──
-        st.markdown("##### Step 1 — Explanation")
-        if explanation_text:
-            provider_name = st.session_state.get("text_provider", "openai")
-            badge_cls = "deepseek" if provider_name == "deepseek" else "openai"
-            badge_label = "DeepSeek" if provider_name == "deepseek" else "OpenAI"
-            st.markdown(
-                f'<div class="expl-label">Generated Explanation'
-                f'<span class="provider-badge {badge_cls}">{badge_label}</span></div>'
-                f'<div class="expl-panel">{html.escape(explanation_text)}</div>',
-                unsafe_allow_html=True,
-            )
-        else:
-            st.markdown(
-                '<div class="expl-panel"><span class="placeholder">'
-                'Use the sidebar to click <strong>Generate Explanation</strong> first.</span></div>',
-                unsafe_allow_html=True,
+        if mode == "API mode":
+            st.markdown("### 1. Connect your models")
+            text_label = st.selectbox("Text provider", list(TEXT_PROVIDERS))
+            text_config = TEXT_PROVIDERS[text_label]
+            text_model_label = st.selectbox("Text model", list(text_config["models"]))
+            text_model = text_config["models"][text_model_label]
+            text_key = st.text_input(
+                f"{text_label} text API key",
+                type="password",
+                key="visitor_text_api_key",
+                help=text_config["key_help"],
+                placeholder="Paste your key - session only",
             )
 
-        # ── Step 2: Images & Video (only shown after generation) ──
-        if explanation_text:
-            st.divider()
-            st.markdown("##### Step 2 — Images & Video")
-            if active_run_dir:
-                run = _load_run_entry(Path(active_run_dir))
-                if run is None:
-                    st.error("The generated run could not be loaded from disk.")
-                else:
-                    _render_run_summary(run)
-                    left, right = st.columns([1, 1])
-                    with left:
-                        show_frames(run.frames_dir)
-                    with right:
-                        show_videos(run.storyboard_video, run.single_video)
-            else:
-                st.markdown(
-                    '<div class="expl-panel"><span class="placeholder">'
-                    'Click <strong>Generate Images &amp; Video</strong> in the sidebar to create the visual lesson.</span></div>',
-                    unsafe_allow_html=True,
+            create_video = st.toggle(
+                "Create illustrated MP4",
+                value=False,
+                help="Uses seven image calls. Text-only lessons need no image key.",
+            )
+            image_label = "OpenAI"
+            image_config = IMAGE_PROVIDERS[image_label]
+            image_model_label = next(iter(image_config["models"]))
+            image_model = image_config["models"][image_model_label]
+            image_key = ""
+            if create_video:
+                image_label = st.selectbox("Image provider", list(IMAGE_PROVIDERS))
+                image_config = IMAGE_PROVIDERS[image_label]
+                image_model_label = st.selectbox("Image model", list(image_config["models"]))
+                image_model = image_config["models"][image_model_label]
+                reuse_openai = (
+                    text_label == "OpenAI"
+                    and image_label == "OpenAI"
+                    and st.checkbox("Use the same OpenAI key for images", value=True)
                 )
+                image_key = text_key if reuse_openai else st.text_input(
+                    f"{image_label} image API key",
+                    type="password",
+                    key="visitor_image_api_key",
+                    help=image_config["key_help"],
+                    placeholder="Paste your image key - session only",
+                )
+                st.warning("Seven image calls may incur noticeable cost and take several minutes.")
 
-    # ── TAB: Quiz ──
-    with tab_quiz:
-        quiz_text = str(st.session_state.get("generated_quiz", "")).strip()
-        if quiz_text:
-            _render_interactive_quiz(
-                quiz_text,
-                subject=str(st.session_state.get("subject_input", "")).strip(),
-                explanation_text=str(st.session_state.get("generated_explanation", "")).strip(),
-                checker2_result=st.session_state.get("checker2_result"),
+            keys_ready = bool(text_key.strip()) and (not create_video or bool(image_key.strip()))
+            if keys_ready:
+                st.success("API setup ready")
+            else:
+                st.info("Enter the required key(s) to unlock generation.")
+
+            st.divider()
+            st.markdown("### 2. Describe the lesson")
+            question = st.text_area(
+                "Student question",
+                placeholder="Why does increasing mass require more force for the same acceleration?",
+                height=130,
             )
+            subject = st.selectbox(
+                "Subject",
+                ["Physics", "Biology", "Chemistry", "Mathematics", "Computer Science", "Other"],
+            )
+            grade = st.slider("Grade", 9, 12, 10)
+            language = st.selectbox(
+                "Language",
+                ["English", "Chinese", "Spanish", "French", "German", "Japanese", "Korean"],
+            )
+            if st.button("Create lesson", type="primary", use_container_width=True, disabled=not keys_ready):
+                _create_lesson(
+                    question,
+                    subject,
+                    grade,
+                    language,
+                    text_provider=text_config["id"],
+                    text_model=text_model,
+                    text_key=text_key,
+                    image_provider=image_config["id"],
+                    image_model=image_model,
+                    image_key=image_key,
+                    create_video=create_video,
+                )
+            st.caption("Keys stay in this Streamlit session. They are never written to files, logs, or environment variables.")
         else:
-            st.info("No quiz generated yet. Generate an explanation first to create quiz questions.")
+            st.markdown("Try the complete interface without an API key.")
+            question, subject = "How can removing one species change a food web?", "Biology"
+            if st.button("Open demo", type="primary", use_container_width=True):
+                st.session_state.bundle = DEMO_BUNDLE
+                st.session_state.gate1 = {"pass": True, "scores": {"accuracy": 4, "completeness": 4, "logical_flow": 4, "grade_fit": 4, "clarity": 4}, "issues": []}
+                st.session_state.pipeline_result = None
+                st.rerun()
 
-    # ── TAB: Resources ──
-    with tab_resources:
-        sources_text = str(st.session_state.get("relevant_sources", "")).strip()
-        if sources_text:
-            st.markdown("**Relevant Sources (Websites, YouTube, Textbooks)**")
-            st.markdown(sources_text)
-        else:
-            st.info("No sources generated yet. Generate an explanation to see relevant learning resources.")
+    st.markdown("<div class='hero'><h1>VisualLesson AI</h1><p>Clear explanations, visual stories, and feedback built for high-school learners.</p></div>", unsafe_allow_html=True)
+    bundle = st.session_state.bundle
+    if not bundle:
+        st.info("Ask a question in the sidebar, or open the ready-made demo.")
+        st.markdown("#### What changed")
+        c1, c2, c3 = st.columns(3)
+        c1.markdown("<div class='card'><b>Useful Gate 1</b><br>Checks accuracy, logic, completeness, clarity, and grade fit before media spending.</div>", unsafe_allow_html=True)
+        c2.markdown("<div class='card'><b>Useful Gate 2</b><br>Checks both render health and whether the visuals teach the stated explanation.</div>", unsafe_allow_html=True)
+        c3.markdown("<div class='card'><b>Student feedback</b><br>Turns missed quiz concepts into a focused review list.</div>", unsafe_allow_html=True)
+        return
 
-        active_run_dir = st.session_state.get("active_run_dir")
-        if active_run_dir:
-            run = _load_run_entry(Path(active_run_dir))
-            if run is not None:
-                st.divider()
-                st.markdown("**Downloads**")
-                dl_cols = st.columns(4)
-                with dl_cols[0]:
-                    if run.frames_dir.exists() and list(run.frames_dir.glob("step_*.png")):
-                        st.download_button(
-                            "📦 Frames (ZIP)",
-                            data=_make_frames_zip(run.frames_dir),
-                            file_name="lesson_frames.zip",
-                            mime="application/zip",
-                            use_container_width=True,
-                        )
-                with dl_cols[1]:
-                    vid_path = run.storyboard_video or run.single_video
-                    if vid_path and vid_path.exists():
-                        st.download_button(
-                            "🎬 Video (MP4)",
-                            data=vid_path.read_bytes(),
-                            file_name="lesson_video.mp4",
-                            mime="video/mp4",
-                            use_container_width=True,
-                        )
-                with dl_cols[2]:
-                    expl = str(st.session_state.get("generated_explanation", "")).strip()
-                    if expl:
-                        st.download_button(
-                            "📄 Explanation (TXT)",
-                            data=expl,
-                            file_name="explanation.txt",
-                            mime="text/plain",
-                            use_container_width=True,
-                        )
-                with dl_cols[3]:
-                    quiz_dl = str(st.session_state.get("generated_quiz", "")).strip()
-                    if quiz_dl:
-                        st.download_button(
-                            "📝 Quiz (MD)",
-                            data=quiz_dl,
-                            file_name="quiz.md",
-                            mime="text/markdown",
-                            use_container_width=True,
-                        )
+    gate_col1, gate_col2 = st.columns(2)
+    with gate_col1:
+        _show_gate("Gate 1 - explanation", st.session_state.gate1)
+    with gate_col2:
+        result = st.session_state.pipeline_result
+        _show_gate("Gate 2 - visuals", result.get("checker2_result") if result else None)
 
-    # ── TAB: Details ──
-    with tab_details:
-        checker_result = st.session_state.get("checker_result")
-        if checker_result and isinstance(checker_result, dict) and checker_result.get("rounds"):
-            st.markdown("**Checker 1 Results (DistilBERT Error-Type Classifier)**")
-            if checker_result.get("was_revised"):
-                st.success(f"Explanation was revised after {checker_result['total_rounds']} checker round(s).")
-            else:
-                st.info("Explanation accepted by checker.")
-            for rnd in checker_result["rounds"]:
-                cr = rnd.get("checker_result", {})
-                st.markdown(f"**Round {rnd['round']}**: {cr.get('label', '?')} (confidence {cr.get('confidence', 0):.3f}) — action: {rnd['action']}")
-                if cr.get("probabilities"):
-                    st.json(cr["probabilities"])
-        else:
-            st.info("No checker results available. Run the pipeline to see error-type classification.")
-
-        st.divider()
-        checker2_result = st.session_state.get("checker2_result")
-        if checker2_result and isinstance(checker2_result, dict):
-            st.markdown("**Checker 2 Results (Frame Quality Validator)**")
-            if checker2_result.get("error"):
-                st.error(f"Checker 2 error: {checker2_result['error']}")
-            else:
-                passed = bool(checker2_result.get("pass", False))
-                score = float(checker2_result.get("overall_score", 0.0))
-                threshold = float(checker2_result.get("threshold", 0.0))
-                mode = str(checker2_result.get("mode", "heuristic"))
-                if passed:
-                    st.success(f"Checker 2 passed (mode={mode}, score={score:.3f}, threshold={threshold:.2f}).")
-                else:
-                    failed_steps = checker2_result.get("failed_steps", [])
-                    st.warning(
-                        f"Checker 2 flagged frame quality (mode={mode}, score={score:.3f}, "
-                        f"threshold={threshold:.2f}, failed steps={failed_steps})."
-                    )
-
-                per_frame = checker2_result.get("per_frame", [])
-                if isinstance(per_frame, list) and per_frame:
-                    for item in per_frame:
-                        sid = item.get("step_id", "?")
-                        item_score = float(item.get("score", 0.0))
-                        item_pass = bool(item.get("pass", False))
-                        issues = item.get("issues", [])
-                        st.markdown(
-                            f"**Step {sid}**: {'PASS' if item_pass else 'FAIL'} "
-                            f"(score {item_score:.3f}) | issues: {issues or 'none'}"
-                        )
-        else:
-            st.info("No Checker 2 results available. Run image generation to validate frame quality.")
-
-        st.divider()
-        analyzer_result = st.session_state.get("analyzer_result")
-        if analyzer_result and isinstance(analyzer_result, dict) and analyzer_result.get("status") == "ok":
-            st.markdown("**Student Weakness Analyzer**")
-            st.json(analyzer_result)
-        else:
-            st.info("No analyzer results available. Complete and submit a quiz to see diagnostics.")
-
-        active_run_dir = st.session_state.get("active_run_dir")
-
-
-from app_v2 import main
-
-
-if __name__ == "__main__":
-    main()
+    lesson, quiz, resources, quality = st.tabs(["Lesson", "Practice", "Resources", "Quality report"])
+    with lesson:
+        _lesson_tab(bundle)
+    with quiz:
+        _quiz_tab(bundle)
+    with resources:
+        _resources_tab(subject, question, bundle)
+    with quality:
+        st.markdown("### Explanation audit")
+        st.json(st.session_state.gate1 or {})
+        if st.session_state.pipeline_result:
+            st.markdown("### Visual audit")
+            st.json(st.session_state.pipeline_result.get("checker2_result") or {})
+        st.caption("A passed automated gate reduces risk but is not a substitute for teacher review in high-stakes instruction.")
