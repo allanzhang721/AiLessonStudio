@@ -1,15 +1,17 @@
-"""Educational quality gates used by the production pipeline."""
+"""Fast, transparent educational quality gates for lesson text."""
 
 from __future__ import annotations
 
 import json
 import re
+import time
 from typing import Any
 
 from .clients import chat_completion
 
 
 _WORD = re.compile(r"[A-Za-z][A-Za-z'-]*")
+_DIMENSIONS = ("accuracy", "completeness", "logical_flow", "grade_fit", "clarity")
 
 
 def _json_object(text: str) -> dict[str, Any]:
@@ -39,6 +41,10 @@ def _local_text_checks(question: str, explanation: str) -> list[str]:
     return issues
 
 
+def _rounded_ms(started: float) -> float:
+    return round((time.perf_counter() - started) * 1000.0, 2)
+
+
 def review_explanation(
     client: Any,
     *,
@@ -49,44 +55,60 @@ def review_explanation(
     subject: str,
     max_repairs: int = 1,
 ) -> dict[str, Any]:
-    """Audit, repair once if needed, and return a transparent gate result."""
+    """Run a cheap local screen, then one compact semantic rubric and repair if needed."""
+    total_started = time.perf_counter()
     current = " ".join(explanation.split())
+    original = current
     rounds: list[dict[str, Any]] = []
-    for attempt in range(max_repairs + 1):
-        local_issues = _local_text_checks(question, current)
-        prompt = f"""Act as an independent educational quality reviewer.
+    local_latency = 0.0
+    model_latency = 0.0
+    model_calls = 0
 
-Subject: {subject or "General"}
-Grade: {grade}
+    for attempt in range(max_repairs + 1):
+        local_started = time.perf_counter()
+        local_issues = _local_text_checks(question, current)
+        local_ms = _rounded_ms(local_started)
+        local_latency += local_ms
+        prompt = f"""Independent high-school explanation audit.
+Subject: {subject or "General"}; Grade: {grade}
 Question: {question}
 Explanation: {current}
 
-Score each dimension from 1 (unsafe/poor) to 4 (excellent):
-accuracy, completeness, logical_flow, grade_fit, and clarity.
-List concrete issues. Pass only if accuracy is 4 and every other score is at
-least 3. If it fails, provide a corrected explanation of 120-260 words.
-Do not add citations or facts you cannot verify.
-
-Return JSON only:
+Score 1-4: accuracy, completeness, logical_flow, grade_fit, clarity.
+Pass only when accuracy=4 and every other score>=3. List only concrete issues.
+If failing, return a corrected 120-260 word explanation. Do not add citations.
+JSON only:
 {{"scores": {{"accuracy": 1, "completeness": 1, "logical_flow": 1,
 "grade_fit": 1, "clarity": 1}}, "issues": ["..."], "pass": false,
 "revised_explanation": "..."}}"""
+        model_started = time.perf_counter()
+        model_calls += 1
         try:
             review = _json_object(chat_completion(client, model, prompt))
+            model_ms = _rounded_ms(model_started)
             scores = {
                 key: max(1, min(4, int(review.get("scores", {}).get(key, 1))))
-                for key in ("accuracy", "completeness", "logical_flow", "grade_fit", "clarity")
+                for key in _DIMENSIONS
             }
             issues = [str(item).strip() for item in review.get("issues", []) if str(item).strip()]
             issues.extend(item for item in local_issues if item not in issues)
             passed = bool(review.get("pass")) and scores["accuracy"] == 4 and min(scores.values()) >= 3 and not local_issues
             revised = " ".join(str(review.get("revised_explanation", "")).split())
         except Exception as exc:
+            model_ms = _rounded_ms(model_started)
             scores = {"accuracy": 1, "completeness": 2, "logical_flow": 2, "grade_fit": 2, "clarity": 2}
             issues = local_issues + [f"Automated review failed: {type(exc).__name__}"]
             passed, revised = False, ""
+        model_latency += model_ms
         action = "accepted" if passed else ("revised" if revised and attempt < max_repairs else "blocked")
-        rounds.append({"round": attempt + 1, "scores": scores, "issues": issues, "pass": passed, "action": action})
+        rounds.append({
+            "round": attempt + 1,
+            "scores": scores,
+            "issues": issues,
+            "pass": passed,
+            "action": action,
+            "latency_ms": {"local": local_ms, "semantic": model_ms},
+        })
         if passed:
             break
         if action == "revised":
@@ -95,28 +117,53 @@ Return JSON only:
         break
 
     passed = bool(rounds and rounds[-1]["pass"])
+    final_scores = rounds[-1]["scores"] if rounds else {}
+    overall = sum(final_scores.values()) / (4.0 * len(_DIMENSIONS)) if final_scores else 0.0
+    total_ms = _rounded_ms(total_started)
     return {
-        "checker_name": "pedagogical_quality_gate_v2",
+        "checker_name": "pedagogical_quality_gate_v3",
+        "mode": "local_then_semantic_cascade",
         "pass": passed,
+        "overall_score": round(overall, 4),
         "final_explanation": current,
-        "was_revised": current != " ".join(explanation.split()),
+        "was_revised": current != original,
         "rounds": rounds,
         "total_rounds": len(rounds),
         "issues": rounds[-1]["issues"] if rounds else ["No review was run."],
-        "scores": rounds[-1]["scores"] if rounds else {},
+        "scores": final_scores,
+        "metrics": {
+            "total_latency_ms": total_ms,
+            "local_latency_ms": round(local_latency, 2),
+            "semantic_latency_ms": round(model_latency, 2),
+            "model_calls": model_calls,
+            "repairs": int(current != original),
+        },
+        "method_comparison": [
+            {"method": "Local structural screen", "trained": False, "latency_ms": round(local_latency, 2), "coverage": "length, focus, relevance, readability"},
+            {"method": "LLM rubric review", "trained": False, "latency_ms": round(model_latency, 2), "coverage": "accuracy, completeness, logic, grade fit, clarity"},
+        ],
+        "trained_model": {
+            "used": False,
+            "reason": "Saved text classifiers predict error categories, not whether an explanation is correct; they remain evaluation baselines.",
+        },
     }
 
 
 def local_explanation_review(question: str, explanation: str, grade: int, subject: str = "") -> dict[str, Any]:
-    """Offline structural check for demos and unit tests; it does not claim fact checking."""
+    """Offline millisecond structural screen; it does not claim fact checking."""
+    started = time.perf_counter()
     issues = _local_text_checks(question, explanation)
     score = max(0.0, 1.0 - 0.2 * len(issues))
+    latency_ms = _rounded_ms(started)
     return {
-        "checker_name": "structural_quality_gate",
+        "checker_name": "structural_quality_gate_v2",
+        "mode": "local_only",
         "pass": not issues,
         "overall_score": round(score, 3),
         "issues": issues,
         "grade": grade,
         "subject": subject,
         "scope": "structure_only",
+        "metrics": {"total_latency_ms": latency_ms, "model_calls": 0},
+        "trained_model": {"used": False},
     }

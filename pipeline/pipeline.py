@@ -181,6 +181,7 @@ def run_pipeline(
                 client=vision_client,
                 model=text_model if text_provider == "openai" else OPENAI_TEXT_MODEL,
                 threshold=checker2_threshold,
+                backend=checker2_backend,
             )
         except Exception as exc:
             checker2_result = {
