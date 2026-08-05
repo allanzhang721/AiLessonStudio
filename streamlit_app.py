@@ -1,4 +1,4 @@
-"""Streamlit Community Cloud entrypoint for VisualLesson AI."""
+"""Streamlit Community Cloud entrypoint for Explain It!."""
 
 from app_v2 import main
 
