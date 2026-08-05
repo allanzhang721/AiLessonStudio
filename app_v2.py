@@ -73,7 +73,13 @@ def _styles() -> None:
         .stApp { background: #f6f7fb; color: #172033; }
         .block-container { max-width: 1160px; padding-top: 2rem; }
         [data-testid="stSidebar"] { background: #101828; }
-        [data-testid="stSidebar"] * { color: #f8fafc; }
+        [data-testid="stSidebar"] { color: #f8fafc; }
+        [data-testid="stSidebar"] h1,
+        [data-testid="stSidebar"] h2,
+        [data-testid="stSidebar"] h3,
+        [data-testid="stSidebar"] h4,
+        [data-testid="stSidebar"] [data-testid="stWidgetLabel"] *,
+        [data-testid="stSidebar"] [data-testid="stCaptionContainer"] * { color: #f8fafc !important; }
         [data-testid="stTextInput"] input,
         [data-testid="stTextArea"] textarea,
         [data-testid="stNumberInput"] input,
