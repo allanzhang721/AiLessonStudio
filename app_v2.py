@@ -74,6 +74,13 @@ def _styles() -> None:
         .block-container { max-width: 1160px; padding-top: 2rem; }
         [data-testid="stSidebar"] { background: #101828; }
         [data-testid="stSidebar"] * { color: #f8fafc; }
+        [data-testid="stTextInput"] input,
+        [data-testid="stTextArea"] textarea,
+        [data-testid="stNumberInput"] input,
+        [data-baseweb="select"] input,
+        [data-baseweb="select"] > div { color: #172033 !important; }
+        [data-testid="stTextInput"] input::placeholder,
+        [data-testid="stTextArea"] textarea::placeholder { color: #667085 !important; opacity: 1; }
         .hero { padding: 2.2rem; border-radius: 24px; color: white;
           background: linear-gradient(125deg,#13213c 0%,#214f8b 58%,#19a6a2 100%);
           box-shadow: 0 18px 50px rgba(20,42,78,.18); margin-bottom: 1.2rem; }
