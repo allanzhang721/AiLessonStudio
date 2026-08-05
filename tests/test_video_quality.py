@@ -111,19 +111,22 @@ class VideoQualityTests(unittest.TestCase):
         app = AppTest.from_file("streamlit_app.py", default_timeout=15).run()
         self.assertFalse(app.exception)
         labels = [item.label for item in app.selectbox]
-        self.assertIn("Text provider", labels)
-        self.assertIn("Image provider", labels)
+        self.assertIn("AI provider", labels)
+        self.assertNotIn("Image provider", labels)
         self.assertIn("Teaching voice", labels)
         self.assertIn("Add cited web research", [item.label for item in app.toggle])
         self.assertFalse(any("Demo" in item.label for item in app.button))
         self.assertEqual(len(app.get("progress")), 6)
         self.assertEqual(len(app.dataframe), 0)
         self.assertTrue(any("checker tests teach us" in str(item.value).lower() for item in app.markdown))
+        api_key_labels = [item.label for item in app.text_input if "API key" in item.label]
+        self.assertEqual(api_key_labels, ["OpenAI API key"])
         app.selectbox[0].select("DeepSeek").run()
         self.assertFalse(app.exception)
-        text_input_labels = [item.label for item in app.text_input]
-        self.assertIn("DeepSeek text API key", text_input_labels)
-        self.assertNotIn("OpenAI research API key", text_input_labels)
+        api_key_labels = [item.label for item in app.text_input if "API key" in item.label]
+        self.assertEqual(api_key_labels, ["DeepSeek API key"])
+        self.assertFalse(any("Image provider" == item.label for item in app.selectbox))
+        self.assertFalse(any("Teaching voice" == item.label for item in app.selectbox))
 
 
 if __name__ == "__main__":

@@ -616,84 +616,65 @@ def main() -> None:
         st.markdown("## Create a lesson")
 
         with st.container():
-            st.markdown("### 1. Connect your models")
-            text_label = st.selectbox("Text provider", list(TEXT_PROVIDERS))
-            text_config = TEXT_PROVIDERS[text_label]
-            text_model_label = st.selectbox("Text model", list(text_config["models"]))
-            text_model = text_config["models"][text_model_label]
-            text_key = st.text_input(
-                f"{text_label} text API key",
-                type="password",
-                key="visitor_text_api_key",
-                help=text_config["key_help"],
-                placeholder="Paste your key - session only",
+            st.markdown("### 1. Connect one provider")
+            provider_label = st.selectbox(
+                "AI provider",
+                list(TEXT_PROVIDERS),
+                help="Choose one provider. The single key below is reused for every supported capability.",
             )
+            provider_config = TEXT_PROVIDERS[provider_label]
+            text_model_label = st.selectbox("Text model", list(provider_config["models"]))
+            text_model = provider_config["models"][text_model_label]
+            api_key = st.text_input(
+                f"{provider_label} API key",
+                type="password",
+                key=f"visitor_api_key_{provider_config['id']}",
+                help=provider_config["key_help"],
+                placeholder="Paste one key - session only",
+            )
+            text_label = provider_label
+            text_config = provider_config
+            text_key = api_key
             research_enabled = st.toggle(
                 "Add cited web research",
                 value=True,
-                help="Uses the selected text provider and the same text API key. Grounded citations appear when that provider supports web search.",
+                help="Uses this same API key. Grounded citations appear when the selected provider supports web search.",
             )
+            provider_supports_video = provider_label == "OpenAI"
             create_video = st.toggle(
                 "Create illustrated MP4",
-                value=True,
-                help="Uses seven image calls. Text-only lessons need no image key.",
+                value=provider_supports_video,
+                disabled=not provider_supports_video,
+                key=f"create_video_{provider_config['id']}",
+                help="OpenAI reuses this one key for seven images and narration. Text-only providers cannot create video.",
             )
+            if not provider_supports_video:
+                st.info("This provider currently supports text lessons only. Choose OpenAI to create images, narration, and MP4 with the same single key.")
+
             image_label = "OpenAI"
             image_config = IMAGE_PROVIDERS[image_label]
             image_model_label = next(iter(image_config["models"]))
             image_model = image_config["models"][image_model_label]
-            image_key = ""
-            narration_key = ""
+            image_key = api_key if create_video else ""
+            narration_key = api_key if create_video else ""
             narration_voice = "marin"
             if create_video:
-                image_label = st.selectbox("Image provider", list(IMAGE_PROVIDERS))
-                image_config = IMAGE_PROVIDERS[image_label]
                 image_model_label = st.selectbox("Image model", list(image_config["models"]))
                 image_model = image_config["models"][image_model_label]
-                reuse_openai = (
-                    text_label == "OpenAI"
-                    and image_label == "OpenAI"
-                    and st.checkbox("Use the same OpenAI key for images", value=True)
-                )
-                image_key = text_key if reuse_openai else st.text_input(
-                    f"{image_label} image API key",
-                    type="password",
-                    key="visitor_image_api_key",
-                    help=image_config["key_help"],
-                    placeholder="Paste your image key - session only",
-                )
+                st.caption("Images and narration reuse the same OpenAI key entered above.")
                 st.warning("Seven image calls may incur noticeable cost and take several minutes.")
-                st.markdown("#### Narration")
                 narration_voice = st.selectbox(
                     "Teaching voice",
                     ["marin", "cedar", "coral", "sage", "alloy"],
                     help="Marin and cedar are recommended for the clearest narration.",
                 )
-                reusable_openai_key = (
-                    text_key if text_label == "OpenAI"
-                    else image_key if image_label == "OpenAI"
-                    else ""
-                )
-                if reusable_openai_key:
-                    narration_key = reusable_openai_key
-                    st.caption("Narration will reuse the OpenAI key already entered above.")
-                else:
-                    narration_key = st.text_input(
-                        "OpenAI narration API key",
-                        type="password",
-                        key="visitor_narration_api_key",
-                        help="Required for high-quality AI narration when text and images use non-OpenAI providers.",
-                    )
                 st.caption("The narration voice is AI-generated, not a human recording.")
 
-            keys_ready = (
-                bool(text_key.strip())
-                and (not create_video or (bool(image_key.strip()) and bool(narration_key.strip())))
-            )
+            keys_ready = bool(api_key.strip())
             if keys_ready:
                 st.success("API setup ready")
             else:
-                st.info("Enter the required key(s) to unlock generation.")
+                st.info("Enter one API key to unlock generation.")
 
             st.divider()
             st.markdown("### 2. Describe the lesson")
@@ -728,7 +709,7 @@ def main() -> None:
                     narration_voice=narration_voice,
                     research_enabled=research_enabled,
                 )
-            st.caption("Keys stay in this Streamlit session. They are never written to files, logs, or environment variables.")
+            st.caption("Your single API key stays in this Streamlit session. It is never written to files, logs, or environment variables.")
 
     st.markdown("<div class='hero'><h1>VisualLesson AI</h1><p>Clear explanations, visual stories, and feedback built for high-school learners.</p></div>", unsafe_allow_html=True)
     bundle = st.session_state.bundle
