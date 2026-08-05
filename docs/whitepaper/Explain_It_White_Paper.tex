@@ -132,16 +132,18 @@ where $e$ is the approved explanation, $r$ the research report, $z$ the quiz, $G
 \begin{figure}[H]
 \centering
 \begin{tikzpicture}[
- node distance=5mm and 8mm,
- box/.style={draw=navy,rounded corners=3pt,fill=pale,minimum height=9mm,text width=24mm,align=center,font=\small},
- gate/.style={diamond,draw=amber!85!black,fill=amber!12,aspect=2.0,align=center,font=\small},
- arrow/.style={-{Latex[length=2mm]},thick,draw=navy}
+ node distance=7mm and 7mm,
+ box/.style={draw=navy,rounded corners=3pt,fill=pale,minimum height=11mm,text width=26mm,align=center,font=\footnotesize},
+ gate/.style={diamond,draw=amber!85!black,fill=amber!12,aspect=2.0,align=center,font=\footnotesize},
+ callout/.style={fill=white,inner sep=1.5pt,text=red!75!black,text width=22mm,align=center,font=\scriptsize},
+ arrow/.style={-{Latex[length=2mm]},thick,draw=navy},
+ reject/.style={-{Latex[length=2mm]},draw=red!75!black,dashed}
 ]
 \node[box] (input) {Question\\grade, subject\\text key + optional media key};
 \node[box,right=of input] (draft) {Structured\\lesson draft};
 \node[gate,right=of draft] (g1) {Gate 1};
 \node[box,right=of g1] (evidence) {Sources, quiz,\\concept map};
-\node[box,below=11mm of evidence] (plan) {Seven-step\\visual plan};
+\node[box,below=18mm of evidence] (plan) {Seven-step\\visual plan};
 \node[box,left=of plan] (images) {Seven images\\and captions};
 \node[gate,left=of images] (g2) {Gate 2};
 \node[box,left=of g2] (video) {Narration,\\transitions, MP4};
@@ -152,8 +154,10 @@ where $e$ is the approved explanation, $r$ the research report, $z$ the quiz, $G
 \draw[arrow] (plan)--(images);
 \draw[arrow] (images)--(g2);
 \draw[arrow] (g2)--node[above,font=\scriptsize]{pass}(video);
-\draw[-{Latex[length=2mm]},draw=red,dashed] (g1.south) -- ++(0,-7mm) node[below,font=\scriptsize,align=center]{block or\\one repair};
-\draw[-{Latex[length=2mm]},draw=red,dashed] (g2.south) -- ++(0,-7mm) node[below,font=\scriptsize,align=center]{needs review;\\no final MP4};
+\node[callout,above=6mm of g1] (g1fail) {Block or\\one repair};
+\node[callout,below=6mm of g2] (g2fail) {Needs review;\\no final MP4};
+\draw[reject] (g1.north) -- (g1fail.south);
+\draw[reject] (g2.south) -- (g2fail.north);
 \end{tikzpicture}
 \caption{Production architecture. The ordering is also a spending policy: text is checked before image calls, and frames are checked before final composition.}
 \label{fig:architecture}
