@@ -111,7 +111,7 @@ class VideoQualityTests(unittest.TestCase):
         app = AppTest.from_file("streamlit_app.py", default_timeout=15).run()
         self.assertFalse(app.exception)
         labels = [item.label for item in app.selectbox]
-        self.assertIn("AI provider", labels)
+        self.assertIn("Text provider", labels)
         self.assertNotIn("Image provider", labels)
         self.assertIn("Teaching voice", labels)
         self.assertIn("Add cited web research", [item.label for item in app.toggle])
@@ -120,13 +120,21 @@ class VideoQualityTests(unittest.TestCase):
         self.assertEqual(len(app.dataframe), 0)
         self.assertTrue(any("checker tests teach us" in str(item.value).lower() for item in app.markdown))
         api_key_labels = [item.label for item in app.text_input if "API key" in item.label]
-        self.assertEqual(api_key_labels, ["OpenAI API key"])
+        self.assertEqual(api_key_labels, ["Text API key"])
         app.selectbox[0].select("DeepSeek").run()
         self.assertFalse(app.exception)
         api_key_labels = [item.label for item in app.text_input if "API key" in item.label]
-        self.assertEqual(api_key_labels, ["DeepSeek API key"])
+        self.assertEqual(api_key_labels, ["Text API key"])
         self.assertFalse(any("Image provider" == item.label for item in app.selectbox))
         self.assertFalse(any("Teaching voice" == item.label for item in app.selectbox))
+        self.assertTrue(any("text-only" in str(item.value).lower() for item in app.warning))
+        add_image = next(item for item in app.toggle if item.label == "Add image API (optional)")
+        add_image.set_value(True).run()
+        self.assertFalse(app.exception)
+        self.assertTrue(any("Image provider" == item.label for item in app.selectbox))
+        api_key_labels = [item.label for item in app.text_input if "API key" in item.label]
+        self.assertEqual(api_key_labels, ["Text API key", "Image API key"])
+        self.assertTrue(any("Teaching voice" == item.label for item in app.selectbox))
 
 
 if __name__ == "__main__":
