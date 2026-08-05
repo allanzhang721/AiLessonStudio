@@ -12,7 +12,12 @@ import streamlit as st
 
 from pipeline.clients import build_text_client
 from pipeline.gate_benchmarks import benchmark_rows
-from pipeline.lesson_service import curated_resources, generate_lesson_bundle, research_lesson_sources
+from pipeline.lesson_service import (
+    build_concept_map,
+    curated_resources,
+    generate_lesson_bundle,
+    research_lesson_sources,
+)
 from pipeline.markdown_render import streamlit_markdown
 from pipeline.pipeline import run_pipeline
 from pipeline.quality_gates import review_explanation
@@ -190,6 +195,12 @@ def _create_lesson(
             bundle["explanation"] = gate1["final_explanation"]
             bundle["research"] = {"status": "disabled", "report_markdown": "", "sources": []}
 
+            bundle["request"] = {
+                "question": question,
+                "subject": subject,
+                "grade": grade,
+                "language": language,
+            }
             bundle["generation"] = {
                 "text_provider": text_provider,
                 "text_model": text_model,
@@ -259,6 +270,98 @@ def _create_lesson(
             }
         st.error(f"Lesson generation stopped safely: {exc}")
 
+
+def _regenerate_media(
+    bundle: dict[str, Any],
+    *,
+    text_provider: str,
+    text_model: str,
+    text_key: str,
+    image_provider: str,
+    image_model: str,
+    image_key: str,
+    narration_key: str,
+    narration_voice: str,
+) -> None:
+    """Rebuild images, narration, and MP4 while keeping the approved lesson text."""
+    if not image_key.strip() or not narration_key.strip():
+        st.error("Image and narration API keys are required to regenerate the visuals.")
+        return
+    request = bundle.get("request") if isinstance(bundle.get("request"), dict) else {}
+    st.session_state.gate2 = {"mode": "waiting", "pass": None, "status": "Regenerating frames for Gate 2."}
+    st.session_state.pipeline_result = None
+    try:
+        with st.status("Regenerating visual lesson", expanded=True) as status:
+            status.write("Creating a fresh seven-frame storyboard...")
+            run = run_pipeline(
+                question=str(request.get("question") or bundle.get("title") or "Lesson topic"),
+                explanation=bundle["explanation"],
+                grade=int(request.get("grade") or 10),
+                subject=str(request.get("subject") or "General"),
+                output_root=Path(tempfile.gettempdir()) / "visual_lesson_ai",
+                run_openai=True,
+                run_checker=False,
+                run_checker2=True,
+                text_provider=text_provider,
+                image_provider=image_provider,
+                text_model=text_model,
+                image_model=image_model,
+                text_api_key=text_key,
+                image_api_key=image_key,
+                tts_api_key=narration_key,
+                tts_voice=narration_voice,
+                gate2_callback=lambda gate: st.session_state.__setitem__("gate2", gate),
+            )
+            st.session_state.pipeline_result = run
+            st.session_state.gate2 = run.get("checker2_result") or st.session_state.gate2
+            status.update(label="Fresh visual lesson ready", state="complete", expanded=False)
+    except Exception as exc:
+        current = st.session_state.get("gate2") or {}
+        if current.get("mode") == "waiting":
+            st.session_state.gate2 = {"mode": "not_completed", "pass": None, "status": "Visual regeneration stopped before Gate 2."}
+        st.error(f"Visual regeneration stopped safely: {exc}")
+
+
+def _dot_escape(value: Any) -> str:
+    return str(value or "").replace("\\", "\\\\").replace('"', '\\"').replace("\n", " ")
+
+
+def _concept_map_tab(bundle: dict[str, Any], subject: str) -> None:
+    concept_map = build_concept_map(bundle, subject)
+    nodes = concept_map.get("nodes", [])
+    st.markdown("### Connected concept map")
+    st.caption("Explore outward from the current lesson. Click a graph node to open its first trusted source, or use all source buttons below.")
+    if not nodes:
+        st.info("Regenerate this lesson to create its related-topic network.")
+        return
+    center = _dot_escape(concept_map.get("center", "Current lesson"))
+    dot = [
+        "digraph ConceptMap {",
+        "graph [rankdir=LR, bgcolor=transparent, pad=0.25, nodesep=0.45, ranksep=0.8];",
+        "node [shape=box, style=\"rounded,filled\", fontname=\"Arial\", fontsize=12, margin=\"0.18,0.12\", color=\"#19A6A2\"];",
+        f'center [label="{center}", fillcolor="#17345F", fontcolor="white", penwidth=2];',
+    ]
+    for index, node in enumerate(nodes, start=1):
+        source = (node.get("sources") or [{}])[0]
+        label = _dot_escape(node.get("topic"))
+        relationship = _dot_escape(node.get("relationship"))
+        url = _dot_escape(source.get("url", "https://openstax.org/subjects"))
+        dot.append(f'n{index} [label="{label}", fillcolor="#EAF8F7", URL="{url}", target="_blank"];')
+        dot.append(f'center -> n{index} [label="{relationship}", color="#7A8CA8", fontcolor="#526078", fontsize=9];')
+    dot.append("}")
+    st.graphviz_chart("\n".join(dot), use_container_width=True)
+
+    st.markdown("### Study each connection")
+    columns = st.columns(2)
+    for index, node in enumerate(nodes):
+        with columns[index % 2].container(border=True):
+            st.caption(str(node.get("relationship", "Related concept")).upper())
+            st.markdown(f"#### {node.get('topic', 'Related topic')}")
+            if node.get("why_useful"):
+                st.write(node["why_useful"])
+            for source in node.get("sources", []):
+                st.link_button(f"Open {source['name']}", source["url"], use_container_width=True)
+                st.caption(source.get("description", ""))
 
 def _show_gate(name: str, result: dict[str, Any] | None) -> None:
     if not result:
@@ -636,9 +739,41 @@ def main() -> None:
         gate2_result = (result.get("checker2_result") if result else None) or st.session_state.get("gate2")
         _show_gate("Gate 2 - visuals", gate2_result)
 
-    lesson, evidence, quiz, resources, quality = st.tabs(["Lesson", "Evidence & sources", "Practice", "Learning library", "Quality report"])
+    with st.expander("Regenerate this lesson"):
+        st.caption("Full regeneration creates a new explanation and, when enabled, seven new images. Visual-only regeneration keeps the approved explanation but creates seven new images, narration, and MP4.")
+        saved_request = bundle.get("request") if isinstance(bundle.get("request"), dict) else {}
+        regenerate_full, regenerate_visuals = st.columns(2)
+        if regenerate_full.button("Regenerate full lesson", use_container_width=True, disabled=not keys_ready):
+            _create_lesson(
+                str(saved_request.get("question") or question),
+                str(saved_request.get("subject") or subject),
+                int(saved_request.get("grade") or grade),
+                str(saved_request.get("language") or language),
+                text_provider=text_config["id"], text_model=text_model, text_key=text_key,
+                image_provider=image_config["id"], image_model=image_model, image_key=image_key,
+                create_video=create_video, narration_key=narration_key, narration_voice=narration_voice,
+                research_enabled=research_enabled, research_key=research_key,
+            )
+            bundle = st.session_state.bundle
+        visual_ready = create_video and bool(text_key.strip()) and bool(image_key.strip()) and bool(narration_key.strip())
+        if regenerate_visuals.button("Regenerate visuals only", use_container_width=True, disabled=not visual_ready):
+            _regenerate_media(
+                bundle,
+                text_provider=text_config["id"], text_model=text_model, text_key=text_key,
+                image_provider=image_config["id"], image_model=image_model, image_key=image_key,
+                narration_key=narration_key, narration_voice=narration_voice,
+            )
+        if not create_video:
+            st.info("Turn on Create illustrated MP4 in the sidebar to enable visual-only regeneration.")
+
+    lesson, concept_map, evidence, quiz, resources, quality = st.tabs([
+        "Lesson", "Concept map", "Evidence & sources", "Practice", "Learning library", "Quality report"
+    ])
     with lesson:
         _lesson_tab(bundle)
+    with concept_map:
+        lesson_subject = str((bundle.get("request") or {}).get("subject") or subject)
+        _concept_map_tab(bundle, lesson_subject)
     with evidence:
         _research_tab(bundle)
     with quiz:
