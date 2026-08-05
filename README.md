@@ -46,7 +46,7 @@ The interface clearly discloses that narration is AI-generated.
 
 Each lesson separates understanding into focused panels: core explanation, worked example, easy-to-confuse ideas with corrections and memory tips, prerequisites, real-world connections, a short study path, and follow-up questions.
 
-Optional cited research uses OpenAI Responses API web search as a separate grounded stage. It prioritizes government, university, museum, standards, peer-reviewed, and established textbook sources; displays source-by-source notes; converts URL annotations into clickable inline citations; and states evidence limitations. OpenAI text users reuse their text key. DeepSeek text users can provide a separate OpenAI key used only for research. Web search has an additional API cost and can be disabled.
+Optional cited research uses OpenAI Responses API web search as a separate grounded stage. It prioritizes government, university, museum, standards, peer-reviewed, and established textbook sources; displays source-by-source notes; converts URL annotations into clickable inline citations; and states evidence limitations. OpenAI text users reuse their text key. The DeepSeek text path does not offer grounded web search in the current app, although curated learning links remain available. Web search has an additional API cost and can be disabled.
 ## Video quality
 
 - 1920 x 1080 output
@@ -90,7 +90,7 @@ No server-side API secret is required because visitors enter their own keys in t
 python -m pytest -q
 ```
 
-The suite covers explanation gates, schema validation, provider routing, API-only Streamlit rendering, narration arguments, audio-aware scene timing, and real H.264 MP4 encoding.
+The 33-test production suite covers explanation gates, schema validation, provider routing, API-only Streamlit rendering, narration arguments, audio-aware scene timing, and real H.264 MP4 encoding.
 
 ## Streamlit Community Cloud
 
@@ -120,4 +120,4 @@ The deployed gates use a cost-aware cascade:
 - **Gate 2:** five render-health metrics are computed across frames in parallel. Failed technical checks stop before any vision-model call; passing frames receive one semantic contact-sheet audit.
 - **Research benchmarks:** the homepage compares saved trained and untrained experiment results by accuracy, precision, recall, F1, AUROC, and experiment time. These offline metrics are labeled separately from live per-lesson latency.
 
-Saved text classifiers remain research baselines because they predict error categories rather than correctness. Saved visual probes remain benchmarks; the production app avoids their heavyweight ML dependencies for faster startup.
+The repository keeps only compact benchmark values and publication figures. Training datasets, model checkpoints, optimizer state, and heavyweight research dependencies are intentionally excluded from the production project.

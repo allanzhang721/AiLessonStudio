@@ -1,54 +1,34 @@
-"""
-config.py — Global constants for the L15 educational video pipeline.
-
-All tunable values live here so the rest of the codebase never hard-codes
-model names, image sizes, or directory paths directly.
-"""
+"""Shared configuration for the Explain It! lesson pipeline."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-# --- Canvas dimensions ---
-# Every generated frame is 1536 × 1024 px (landscape, ~1.5:1 ratio).
-# The bottom 320 px are reserved as the caption band; diagram content
-# must stay above y = IMG_H - MIN_BOTTOM_BAND = 704 px.
+# Educational image canvas. The lower band is reserved for deterministic captions.
 IMG_W = 1536
 IMG_H = 1024
-MIN_BOTTOM_BAND = 320   # height of the white caption band added below each frame
+MIN_BOTTOM_BAND = 320
 
-# --- Provider-specific model names ---
-# OpenAI
-OPENAI_TEXT_MODEL = "gpt-5.6-terra"  # balanced quality/cost for student-facing lessons
-OPENAI_IMAGE_MODEL = "gpt-image-2"   # current production image model
-OPENAI_TTS_MODEL = "gpt-4o-mini-tts"  # controllable, production-quality narration
-OPENAI_TTS_VOICE = "marin"            # recommended high-quality teaching voice
+# OpenAI defaults
+OPENAI_TEXT_MODEL = "gpt-5.6-terra"
+OPENAI_IMAGE_MODEL = "gpt-image-2"
+OPENAI_TTS_MODEL = "gpt-4o-mini-tts"
+OPENAI_TTS_VOICE = "marin"
 
-# DeepSeek
+# DeepSeek text
 DEEPSEEK_TEXT_MODEL = "deepseek-v4-flash"
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 
-# Alibaba DashScope / Wanx (万象)
+# Alibaba Model Studio images
 WANX_IMAGE_MODEL = "wan2.7-image"
 DASHSCOPE_BASE_URL = "https://dashscope.aliyuncs.com/api/v1"
 
-# Legacy aliases used throughout codebase (default = OpenAI)
+# Default aliases used by the provider-neutral pipeline.
 PLANNER_MODEL = OPENAI_TEXT_MODEL
 IMAGE_MODEL = OPENAI_IMAGE_MODEL
 TTS_MODEL = OPENAI_TTS_MODEL
 TTS_VOICE = OPENAI_TTS_VOICE
 
-# --- Checker 1 (DistilBERT error-type classifier) ---
-CHECKER1_CKPT_DIR = Path(__file__).resolve().parent.parent / "checker1" / "model" / "distilbert_error_type_ckpt" / "checkpoint-360"
-CHECKER1_MAX_LEN = 256             # tokenizer max_length used during training
-CHECKER1_LABELS = [                # alphabetical order from LabelEncoder
-    "ConceptError",
-    "GradeMismatch",
-    "LogicalGap",
-    "MisleadingAnalogy",
-    "MissingCondition",
-]
-
-# --- Output / pipeline defaults ---
-DEFAULT_ROOT = Path("l15_output")  # base directory where run output folders are written
-DEFAULT_STEPS = 7                  # number of storyboard frames per video
+# Generated run artifacts stay under an ignored directory.
+DEFAULT_ROOT = Path("output")
+DEFAULT_STEPS = 7
