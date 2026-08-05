@@ -225,25 +225,28 @@ A semantic reviewer scores accuracy, completeness, logical flow, grade fit, and 
 \centering
 \resizebox{0.96\linewidth}{!}{%
 \begin{tikzpicture}[
- node distance=5mm and 10mm,
- proc/.style={draw=navy,rounded corners=2pt,fill=pale,text width=29mm,minimum height=9mm,align=center,font=\small},
+ node distance=7mm and 8mm,
+ proc/.style={draw=navy,rounded corners=2pt,fill=pale,text width=26mm,minimum height=9mm,align=center,font=\small},
  dec/.style={diamond,draw=amber!90!black,fill=amber!12,aspect=2.1,align=center,font=\small},
- arr/.style={-{Latex[length=2mm]},thick,draw=navy}
+ arr/.style={-{Latex[length=2mm]},thick,draw=navy},
+ yesarr/.style={arr,draw=green!80!black},
+ noarr/.style={arr,draw=red!85!black},
+ retryarr/.style={arr,draw=teal}
 ]
 \node[proc] (draft) {Draft explanation};
 \node[proc,right=of draft] (local) {Local structure\\and relevance screen};
 \node[proc,right=of local] (rubric) {Five-score\\semantic audit};
-\node[dec,below=9mm of rubric] (pass) {All rules\\pass?};
+\node[dec,below=10mm of rubric] (pass) {All rules\\pass?};
 \node[proc,left=of pass] (accept) {Accept and record\\Gate 1 evidence};
 \node[dec,right=of pass] (repair) {Repair\\available and\\unused?};
-\node[proc,below=8mm of repair] (revise) {Apply one revision\\and recheck};
-\node[proc,below=8mm of pass] (block) {Block media and\\show issues};
+\node[proc,right=10mm of repair] (revise) {Apply one revision\\and recheck};
+\node[proc,below=9mm of pass] (block) {Block media and\\show issues};
 \draw[arr] (draft)--(local); \draw[arr] (local)--(rubric); \draw[arr] (rubric)--(pass);
-\draw[arr] (pass)--node[above,font=\scriptsize]{yes}(accept);
-\draw[arr] (pass)--node[above,font=\scriptsize]{no}(repair);
-\draw[arr] (repair)--node[right,font=\scriptsize]{yes}(revise);
-\draw[arr] (revise.west)-| (local.south);
-\draw[arr] (repair.south west)--node[left,font=\scriptsize]{no}(block.north east);
+\draw[yesarr] (pass)--node[above,font=\scriptsize]{yes}(accept);
+\draw[noarr] (pass)--node[above,font=\scriptsize]{no}(repair);
+\draw[yesarr] (repair)--node[above,font=\scriptsize]{yes: one retry}(revise);
+\draw[noarr] (repair.south) |- node[pos=0.2,right,font=\scriptsize]{no} (block.east);
+\draw[retryarr] (revise.east) -- ++(7mm,0) |- ($(rubric.north)+(0,9mm)$) -| node[pos=0.75,above,font=\scriptsize]{recheck} (local.north);
 \end{tikzpicture}%
 }
 \caption{Gate 1 decision graph. The loop is bounded to prevent indefinite self-revision.}
