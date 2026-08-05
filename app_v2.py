@@ -79,6 +79,8 @@ def _styles() -> None:
         [data-testid="stNumberInput"] input,
         [data-baseweb="select"] input,
         [data-baseweb="select"] > div { color: #172033 !important; }
+        [data-testid="stSidebar"] [data-baseweb="select"] * { color: #172033 !important; }
+        [data-testid="stSidebar"] [data-baseweb="select"] svg { fill: #172033 !important; }
         [data-testid="stTextInput"] input::placeholder,
         [data-testid="stTextArea"] textarea::placeholder { color: #667085 !important; opacity: 1; }
         .hero { padding: 2.2rem; border-radius: 24px; color: white;
