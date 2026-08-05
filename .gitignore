@@ -1,27 +1,52 @@
-# OS/editor
+# Operating-system and editor files
 .DS_Store
+._*
+Thumbs.db
 .vscode/
+.idea/
 
-# Python
+# Python caches and environments
 __pycache__/
 *.py[cod]
 *.pyo
 *.pyd
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 .venv/
+venv/
 
-# Secrets
-# Do not sync this file to version control.
-# It should be created locally with the necessary API keys and secrets for development.
+# Local credentials
 api_keys.txt
 .streamlit/secrets.toml
+.env
+.env.*
 
-# Keep checker1/model under version control (via Git LFS), ignore other checker1 content.
-checker1/*
-!checker1/model/
-!checker1/model/**
-checker1/model/**/.DS_Store
-
-# Generated media and render outputs
+# Generated application media
 output/
+l15_output/
+*.mp4
+*.wav
 
+# Research datasets and model checkpoints are stored outside this repository
+checker1/
+checker2/
+*.safetensors
+*.ckpt
+*.pt
+*.pth
+*.onnx
+*.zip
+*.tar
+*.tar.gz
+
+# LaTeX build products
+*.aux
+*.bbl
+*.blg
+*.log
+*.out
+*.synctex.gz
+*.toc
