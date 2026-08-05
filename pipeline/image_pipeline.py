@@ -28,7 +28,7 @@ from __future__ import annotations
 import base64
 import time
 from pathlib import Path
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 from PIL import Image
 
@@ -187,7 +187,14 @@ def _wanx_image(
     return out_path
 
 
-def plan_to_images(plan: dict, out_dir: Path, client=None, image_model: str = OPENAI_IMAGE_MODEL) -> List[Path]:
+def plan_to_images(
+    plan: dict,
+    out_dir: Path,
+    client=None,
+    image_model: str = OPENAI_IMAGE_MODEL,
+    *,
+    progress_callback: Optional[Callable[[int, int, str], None]] = None,
+) -> List[Path]:
     """
     Stage 2: plan -> 7 output frame images with captions.
     Uses GPT image generation if client is provided; otherwise makes local placeholders.
@@ -217,8 +224,11 @@ def plan_to_images(plan: dict, out_dir: Path, client=None, image_model: str = OP
         "steps": [],
     }
 
+    total_steps = len(plan["steps"])
     for step, caption in zip(plan["steps"], plan["captions"]):
         sid = int(step["step_id"])
+        if progress_callback is not None:
+            progress_callback(sid, total_steps, "starting")
         raw_path = raw_dir / f"step_{sid:02d}.png"
         final_path = final_dir / f"step_{sid:02d}.png"
 
@@ -267,6 +277,8 @@ def plan_to_images(plan: dict, out_dir: Path, client=None, image_model: str = OP
         framed.save(final_path)
         frames.append(final_path)
         prev_raw = raw_path
+        if progress_callback is not None:
+            progress_callback(sid, total_steps, "complete")
 
     plan["render_meta"] = render_meta
     return frames

@@ -92,6 +92,7 @@ def run_pipeline(
     tts_api_key: Optional[str] = None,
     tts_voice: str = "marin",
     gate2_callback: Optional[Callable[[dict], None]] = None,
+    progress_callback: Optional[Callable[[str, dict], None]] = None,
 ) -> dict:
     """
     End-to-end pipeline:
@@ -101,6 +102,10 @@ def run_pipeline(
       3) images -> GIF + MP4 video
     """
     t0 = time.time()
+
+    def report_progress(stage: str, **details) -> None:
+        if progress_callback is not None:
+            progress_callback(stage, details)
 
     # Keep visitor credentials separate; never copy them to environment variables.
     resolved_text_key = text_api_key or api_key
@@ -146,6 +151,7 @@ def run_pipeline(
             raise ValueError(f"Explanation quality gate blocked media generation: {issues or 'review unavailable'}")
 
 
+    report_progress("storyboard", message="Planning a seven-step visual story.", progress=0.44)
     t_plan = time.time()
     plan = question_explanation_grade_to_plan(
         question=question,
@@ -169,9 +175,23 @@ def run_pipeline(
                 save_text(text, prompt_dir / f"{name}.txt")
 
     t_images = time.time()
-    frames = plan_to_images(plan=plan, out_dir=out_dir, client=image_client, image_model=image_model)
+    frames = plan_to_images(
+        plan=plan,
+        out_dir=out_dir,
+        client=image_client,
+        image_model=image_model,
+        progress_callback=lambda step, total, state: report_progress(
+            "frame",
+            message=f"{'' if state == 'starting' else 'Finished '}illustration {step} of {total}.",
+            step=step,
+            total=total,
+            state=state,
+            progress=0.48 + (0.30 * (step - (0.5 if state == "starting" else 0)) / total),
+        ),
+    )
     stage_times["images_seconds"] = round(time.time() - t_images, 3)
 
+    report_progress("visual_check", message="Checking readability and teaching alignment.", progress=0.80)
     checker2_result = None
     if run_checker2:
         t_checker2 = time.time()
@@ -198,20 +218,24 @@ def run_pipeline(
         if gate2_callback is not None and checker2_result is not None:
             gate2_callback(checker2_result)
 
+    report_progress("preview", message="Building the animated preview.", progress=0.86)
     t_gif = time.time()
     gif_path = make_gif(frames, out_dir / "storyboard.gif", fps=1.0)
     stage_times["gif_seconds"] = round(time.time() - t_gif, 3)
 
+    report_progress("narration", message="Recording the teaching narration.", progress=0.90)
     t_voice = time.time()
     voiceover_path = synthesize_clean_voiceover(tts_client, plan, out_dir, voice=tts_voice)
     if run_openai and voiceover_path is None:
         raise ValueError("An OpenAI narration key is required to create the lesson video.")
     stage_times["voiceover_seconds"] = round(time.time() - t_voice, 3)
 
+    report_progress("compose", message="Composing the final HD lesson video.", progress=0.96)
     t_video = time.time()
     video_path = images_to_video(frames, out_dir / "storyboard.mp4", audio_path=voiceover_path, plan=plan)
     stage_times["video_seconds"] = round(time.time() - t_video, 3)
 
+    report_progress("complete", message="Visual lesson complete.", progress=1.0)
     total_seconds = round(time.time() - t0, 3)
     manifest = {
         "question_id": plan.get("question_id"),
