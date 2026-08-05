@@ -59,7 +59,9 @@ def _init_state() -> None:
     defaults = {
         "bundle": None,
         "gate1": None,
+        "gate2": None,
         "pipeline_result": None,
+        "media_requested": False,
         "quiz_submitted": False,
         "started_at": {},
     }
@@ -157,6 +159,13 @@ def _create_lesson(
         st.error(f"The {text_provider} text client could not be initialized.")
         return
 
+    st.session_state.media_requested = create_video
+    st.session_state.gate2 = (
+        {"mode": "waiting", "pass": None, "status": "Waiting for generated frames."}
+        if create_video
+        else {"mode": "not_applicable", "pass": None, "status": "Illustrated video was not requested."}
+    )
+
     try:
         with st.status("Building your lesson", expanded=True) as status:
             status.write(f"Drafting with {text_provider}: {text_model}...")
@@ -196,6 +205,7 @@ def _create_lesson(
 
             if not gate1["pass"]:
                 status.update(label="Lesson needs review", state="error")
+                st.session_state.gate2 = {"mode": "blocked", "pass": None, "status": "Gate 1 did not pass, so visuals were not generated."}
                 st.error("Gate 1 could not verify this explanation. No research or media costs were incurred.")
                 return
 
@@ -229,8 +239,10 @@ def _create_lesson(
                     image_api_key=image_key,
                     tts_api_key=narration_key,
                     tts_voice=narration_voice,
+                    gate2_callback=lambda gate: st.session_state.__setitem__("gate2", gate),
                 )
                 st.session_state.pipeline_result = run
+                st.session_state.gate2 = run.get("checker2_result") or st.session_state.gate2
                 run_dir = Path(run["out_dir"])
                 (run_dir / "lesson.json").write_text(
                     json.dumps(bundle, ensure_ascii=False, indent=2),
@@ -238,12 +250,29 @@ def _create_lesson(
                 )
             status.update(label="Lesson ready", state="complete", expanded=False)
     except Exception as exc:
+        gate2_state = st.session_state.get("gate2") or {}
+        if gate2_state.get("mode") == "waiting":
+            st.session_state.gate2 = {
+                "mode": "not_completed",
+                "pass": None,
+                "status": "Media generation stopped before frames were available for Gate 2.",
+            }
         st.error(f"Lesson generation stopped safely: {exc}")
 
 
 def _show_gate(name: str, result: dict[str, Any] | None) -> None:
     if not result:
         st.caption(f"{name}: not run")
+        return
+    if result.get("pass") is None:
+        mode = result.get("mode")
+        label = {
+            "not_applicable": "Not applicable",
+            "blocked": "Blocked",
+            "not_completed": "Not completed",
+        }.get(mode, "Waiting")
+        st.markdown(f"**{name}: {label}**")
+        st.caption(result.get("status", "Gate 2 will run after visual frames are generated."))
         return
     passed = bool(result.get("pass"))
     score = result.get("overall_score")
@@ -423,7 +452,7 @@ def _benchmark_dashboard() -> None:
 def _quality_report() -> None:
     gate1 = st.session_state.gate1 or {}
     pipeline_result = st.session_state.pipeline_result or {}
-    gate2 = pipeline_result.get("checker2_result") or {}
+    gate2 = pipeline_result.get("checker2_result") or st.session_state.get("gate2") or {}
     st.markdown("### Live gate performance")
     for title, result in (("Gate 1 · explanation", gate1), ("Gate 2 · visuals", gate2)):
         st.markdown(f"#### {title}")
@@ -432,7 +461,11 @@ def _quality_report() -> None:
             continue
         metrics = result.get("metrics", {})
         columns = st.columns(3)
-        columns[0].metric("Decision", "Pass" if result.get("pass") else "Review")
+        if result.get("pass") is None:
+            decision = "N/A" if result.get("mode") == "not_applicable" else result.get("mode", "waiting").replace("_", " ").title()
+        else:
+            decision = "Pass" if result.get("pass") else "Review"
+        columns[0].metric("Decision", decision)
         score = result.get("overall_score")
         columns[1].metric("Score", f"{float(score) * 100:.0f}%" if isinstance(score, (int, float)) else "—")
         columns[2].metric("Live latency", f"{float(metrics.get('total_latency_ms', 0)):.0f} ms")
@@ -600,7 +633,8 @@ def main() -> None:
         _show_gate("Gate 1 - explanation", st.session_state.gate1)
     with gate_col2:
         result = st.session_state.pipeline_result
-        _show_gate("Gate 2 - visuals", result.get("checker2_result") if result else None)
+        gate2_result = (result.get("checker2_result") if result else None) or st.session_state.get("gate2")
+        _show_gate("Gate 2 - visuals", gate2_result)
 
     lesson, evidence, quiz, resources, quality = st.tabs(["Lesson", "Evidence & sources", "Practice", "Learning library", "Quality report"])
     with lesson:
