@@ -13,7 +13,7 @@ Import any of the four main entry points directly from the package:
 
 Provider helpers:
     from pipeline import build_text_client, build_image_client, build_tts_client
-    from pipeline import available_text_providers, available_image_providers, available_video_providers
+    from pipeline import available_text_providers, available_image_providers
 
 Pipeline stages in order:
   0. checker.py        — Checker 1 DistilBERT error-type classifier + LLM repair loop
@@ -25,8 +25,8 @@ Pipeline stages in order:
 from .checker import checker1_predict, checker1_loop, build_checker_input_text
 from .frame_checker import checker2_validate_frames
 from .student_analyzer import analyze_student_weakness, infer_concept_tags
-from .clients import build_text_client, build_image_client, build_video_client, build_tts_client
-from .api_keys import available_text_providers, available_image_providers, available_video_providers
+from .clients import build_text_client, build_image_client, build_tts_client
+from .api_keys import available_text_providers, available_image_providers
 from .planner import question_explanation_grade_to_plan
 from .image_pipeline import plan_to_images
 from .video_pipeline import images_to_video
@@ -42,11 +42,9 @@ __all__ = [
     "infer_concept_tags",
     "build_text_client",
     "build_image_client",
-    "build_video_client",
     "build_tts_client",
     "available_text_providers",
     "available_image_providers",
-    "available_video_providers",
     "question_explanation_grade_to_plan",
     "plan_to_images",
     "images_to_video",

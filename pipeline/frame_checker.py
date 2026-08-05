@@ -198,3 +198,106 @@ def checker2_validate_frames(
         "failed_steps": failed_steps,
     }
     return result
+
+
+def _extract_json_object(text: str) -> dict[str, Any]:
+    import json
+
+    start, end = text.find("{"), text.rfind("}")
+    if start < 0 or end <= start:
+        raise ValueError("Vision reviewer returned no JSON object.")
+    value = json.loads(text[start : end + 1])
+    if not isinstance(value, dict):
+        raise ValueError("Vision review must be an object.")
+    return value
+
+
+def _contact_sheet_data_url(frame_paths: list[Path]) -> str:
+    import base64
+    import io
+
+    thumbs: list[Image.Image] = []
+    for path in frame_paths:
+        with Image.open(path) as img:
+            thumb = img.convert("RGB")
+            thumb.thumbnail((512, 342))
+            thumbs.append(thumb.copy())
+    width = max(image.width for image in thumbs)
+    height = max(image.height for image in thumbs)
+    sheet = Image.new("RGB", (width * len(thumbs), height), "white")
+    for index, image in enumerate(thumbs):
+        sheet.paste(image, (index * width, 0))
+    buffer = io.BytesIO()
+    sheet.save(buffer, format="JPEG", quality=82)
+    return "data:image/jpeg;base64," + base64.b64encode(buffer.getvalue()).decode("ascii")
+
+
+def checker2_validate_lesson_frames(
+    frame_paths: list[Path],
+    *,
+    plan: Optional[dict[str, Any]] = None,
+    client: Any = None,
+    model: str = "gpt-5.6-terra",
+    threshold: float = 0.65,
+) -> dict[str, Any]:
+    """Combine render-health metrics with a semantic vision audit."""
+    technical = checker2_validate_frames(frame_paths, threshold=0.42)
+    if client is None or not plan:
+        technical["checker_name"] = "visual_quality_gate_v2"
+        technical["mode"] = "technical_only"
+        technical["scope"] = "No semantic/factual vision audit was available."
+        technical["pass"] = bool(technical.get("pass"))
+        return technical
+
+    captions = plan.get("captions", [])
+    prompt = f"""Review this contact sheet of ordered educational storyboard frames.
+
+Question: {plan.get("question_text", "")}
+Correct explanation: {plan.get("canonical_answer", "")}
+Grade: {plan.get("grade", "")}
+Frame captions: {captions}
+
+Score 1-4 for semantic_accuracy, teaching_alignment, sequence_continuity,
+legibility, and visual_load. List failed frame numbers and concrete issues.
+Pass only if semantic_accuracy is 4 and every other score is at least 3.
+Return JSON only:
+{{"scores": {{"semantic_accuracy": 1, "teaching_alignment": 1,
+"sequence_continuity": 1, "legibility": 1, "visual_load": 1}},
+"failed_steps": [1], "issues": ["..."], "pass": false}}"""
+    try:
+        response = client.responses.create(
+            model=model,
+            input=[{"role": "user", "content": [
+                {"type": "input_text", "text": prompt},
+                {"type": "input_image", "image_url": _contact_sheet_data_url(frame_paths)},
+            ]}],
+        )
+        semantic = _extract_json_object(response.output_text)
+        scores = {
+            key: max(1, min(4, int(semantic.get("scores", {}).get(key, 1))))
+            for key in ("semantic_accuracy", "teaching_alignment", "sequence_continuity", "legibility", "visual_load")
+        }
+        semantic_pass = bool(semantic.get("pass")) and scores["semantic_accuracy"] == 4 and min(scores.values()) >= 3
+        failed = sorted({int(item) for item in semantic.get("failed_steps", []) if str(item).isdigit()})
+        issues = [str(item).strip() for item in semantic.get("issues", []) if str(item).strip()]
+    except Exception as exc:
+        scores = {}
+        semantic_pass = False
+        failed = list(range(1, len(frame_paths) + 1))
+        issues = [f"Semantic review failed: {type(exc).__name__}"]
+
+    tech_score = float(technical.get("overall_score", 0.0))
+    semantic_score = (sum(scores.values()) / (4 * len(scores))) if scores else 0.0
+    overall = round(0.35 * tech_score + 0.65 * semantic_score, 4)
+    return {
+        "checker_name": "visual_quality_gate_v2",
+        "mode": "technical_plus_semantic",
+        "pass": bool(technical.get("pass")) and semantic_pass and overall >= threshold,
+        "overall_score": overall,
+        "threshold": threshold,
+        "technical": technical,
+        "semantic_scores": scores,
+        "issues": issues,
+        "failed_steps": failed,
+        "per_frame": technical.get("per_frame", []),
+    }

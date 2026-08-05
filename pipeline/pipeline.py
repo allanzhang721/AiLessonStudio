@@ -28,7 +28,6 @@ Output layout (under output_root/<question_id>/):
 Provider selection:
   text_provider   — "openai" or "deepseek" (for planner + checker repair)
   image_provider  — "openai" or "wanx"     (for frame generation)
-  video_provider  — "sora" or "wanx"       (for single-video, passed through)
 
 Clients are built via clients.py which reads keys from api_keys.txt / env.
 """
@@ -39,7 +38,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from .checker import checker1_loop
+from .quality_gates import review_explanation
 from .clients import build_text_client, build_image_client, build_tts_client
 from .config import (
     DEFAULT_ROOT,
@@ -48,11 +47,11 @@ from .config import (
     OPENAI_IMAGE_MODEL,
     WANX_IMAGE_MODEL,
 )
-from .frame_checker import checker2_validate_frames
+from .frame_checker import checker2_validate_lesson_frames
 from .image_pipeline import plan_to_images
 from .planner import question_explanation_grade_to_plan
 from .utils import ensure_dir, make_gif, save_json, save_text
-from .video_pipeline import build_narration_script, estimate_video_fps, images_to_video, synthesize_clean_voiceover
+from .video_pipeline import images_to_video, synthesize_clean_voiceover
 
 
 def _model_for_text_provider(provider: str) -> str:
@@ -85,6 +84,13 @@ def run_pipeline(
     checker2_backend: str = "heuristic",
     text_provider: str = "openai",
     image_provider: str = "openai",
+    text_model: Optional[str] = None,
+    image_model: Optional[str] = None,
+    text_api_key: Optional[str] = None,
+    image_api_key: Optional[str] = None,
+    api_key: Optional[str] = None,
+    tts_api_key: Optional[str] = None,
+    tts_voice: str = "marin",
 ) -> dict:
     """
     End-to-end pipeline:
@@ -95,13 +101,23 @@ def run_pipeline(
     """
     t0 = time.time()
 
-    # Build per-stage clients via the centralised client factory
-    text_client = build_text_client(text_provider) if run_openai else None
-    image_client = build_image_client(image_provider) if run_openai else None
-    tts_client = build_tts_client() if run_openai else None
+    # Keep visitor credentials separate; never copy them to environment variables.
+    resolved_text_key = text_api_key or api_key
+    resolved_image_key = image_api_key or api_key
+    text_client = build_text_client(text_provider, api_key=resolved_text_key) if run_openai else None
+    image_client = build_image_client(image_provider, api_key=resolved_image_key) if run_openai else None
+    tts_key = tts_api_key or (resolved_text_key if text_provider == "openai" else (
+        resolved_image_key if image_provider == "openai" else None
+    ))
+    tts_client = build_tts_client(api_key=tts_key) if run_openai and tts_key else None
 
-    text_model = _model_for_text_provider(text_provider)
-    image_model = _model_for_image_provider(image_provider)
+    text_model = text_model or _model_for_text_provider(text_provider)
+    image_model = image_model or _model_for_image_provider(image_provider)
+    vision_client = text_client if text_provider == "openai" else (
+        build_text_client("openai", api_key=resolved_image_key)
+        if image_provider == "openai" and resolved_image_key
+        else None
+    )
 
     stage_times: dict[str, float] = {}
 
@@ -110,21 +126,24 @@ def run_pipeline(
     if run_checker:
         t_checker = time.time()
         try:
-            checker_result = checker1_loop(
+            checker_result = review_explanation(
                 client=text_client,
+                model=text_model,
                 question=question,
                 explanation=explanation,
                 grade=grade,
                 subject=subject,
-                max_rounds=checker_max_rounds,
-                confidence_threshold=checker_confidence_threshold,
-                model=text_model,
+                max_repairs=max(0, min(2, checker_max_rounds - 1)),
             )
             if checker_result["was_revised"]:
                 explanation = checker_result["final_explanation"]
         except Exception as exc:
             checker_result = {"error": str(exc), "was_revised": False, "rounds": [], "total_rounds": 0, "final_explanation": explanation}
         stage_times["checker_seconds"] = round(time.time() - t_checker, 3)
+        if not checker_result or not checker_result.get("pass"):
+            issues = "; ".join((checker_result or {}).get("issues", [])[:3])
+            raise ValueError(f"Explanation quality gate blocked media generation: {issues or 'review unavailable'}")
+
 
     t_plan = time.time()
     plan = question_explanation_grade_to_plan(
@@ -156,10 +175,12 @@ def run_pipeline(
     if run_checker2:
         t_checker2 = time.time()
         try:
-            checker2_result = checker2_validate_frames(
+            checker2_result = checker2_validate_lesson_frames(
                 frames,
+                plan=plan,
+                client=vision_client,
+                model=text_model if text_provider == "openai" else OPENAI_TEXT_MODEL,
                 threshold=checker2_threshold,
-                backend=checker2_backend,
             )
         except Exception as exc:
             checker2_result = {
@@ -178,15 +199,13 @@ def run_pipeline(
     stage_times["gif_seconds"] = round(time.time() - t_gif, 3)
 
     t_voice = time.time()
-    narration_script = build_narration_script(plan)
-    voiceover_path = synthesize_clean_voiceover(tts_client, plan, out_dir)
+    voiceover_path = synthesize_clean_voiceover(tts_client, plan, out_dir, voice=tts_voice)
+    if run_openai and voiceover_path is None:
+        raise ValueError("An OpenAI narration key is required to create the lesson video.")
     stage_times["voiceover_seconds"] = round(time.time() - t_voice, 3)
 
     t_video = time.time()
-    video_fps = 1.0
-    if voiceover_path is not None:
-        video_fps = estimate_video_fps(len(frames), narration_script)
-    video_path = images_to_video(frames, out_dir / "storyboard.mp4", fps=video_fps, audio_path=voiceover_path)
+    video_path = images_to_video(frames, out_dir / "storyboard.mp4", audio_path=voiceover_path, plan=plan)
     stage_times["video_seconds"] = round(time.time() - t_video, 3)
 
     total_seconds = round(time.time() - t0, 3)
@@ -201,6 +220,11 @@ def run_pipeline(
         "render_meta": plan.get("render_meta", {}),
         "stage_times": stage_times,
         "total_seconds": total_seconds,
+        "video_quality": {
+            "resolution": "1920x1080",
+            "fps": 30,
+            "narration_voice": tts_voice,
+        },
         "artifacts": {
             "plan_json": str(out_dir / "plan.json"),
             "gif": str(gif_path),
