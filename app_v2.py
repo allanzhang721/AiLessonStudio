@@ -141,7 +141,6 @@ def _create_lesson(
     narration_key: str,
     narration_voice: str,
     research_enabled: bool,
-    research_key: str,
 ) -> None:
     if not question.strip():
         st.error("Enter a question first.")
@@ -222,15 +221,14 @@ def _create_lesson(
 
             if research_enabled:
                 status.write("Searching reliable sources and building cited notes...")
-                research_client = client if text_provider == "openai" else build_text_client("openai", api_key=research_key)
                 bundle["research"] = research_lesson_sources(
-                    research_client,
+                    client,
                     question=question,
                     subject=subject,
                     grade=grade,
                     language=language,
+                    model=text_model,
                 )
-
             if create_video:
                 status.write(f"Illustrating seven steps with {image_provider}: {image_model}...")
                 run = run_pipeline(
@@ -456,7 +454,14 @@ def _research_tab(bundle: dict[str, Any]) -> None:
     st.caption("Web-grounded notes are generated separately from the lesson draft. Open the citations and compare what each source actually supports.")
     research = bundle.get("research") if isinstance(bundle.get("research"), dict) else {}
     if research.get("status") != "ready":
-        st.warning("Cited research was not available for this lesson. Use the trusted library tab as a starting point and verify important claims with a teacher or textbook.")
+        if research.get("reason") == "selected_text_provider_has_no_grounded_web_search":
+            st.warning(
+                "Your selected text provider does not offer grounded web search through this API. "
+                "The lesson still uses the same text API key; use the trusted Learning library links "
+                "below for verified starting points."
+            )
+        else:
+            st.warning("Cited research was not available for this lesson. Use the trusted library tab as a starting point and verify important claims with a teacher or textbook.")
         return
     st.markdown(streamlit_markdown(research.get("report_markdown", "")))
     sources = research.get("sources") if isinstance(research.get("sources"), list) else []
@@ -626,18 +631,8 @@ def main() -> None:
             research_enabled = st.toggle(
                 "Add cited web research",
                 value=True,
-                help="Searches reliable sources and adds clickable citations. Web search has an additional API cost.",
+                help="Uses the selected text provider and the same text API key. Grounded citations appear when that provider supports web search.",
             )
-            research_key = text_key if text_label == "OpenAI" else ""
-            if research_enabled and text_label != "OpenAI":
-                research_key = st.text_input(
-                    "OpenAI research API key",
-                    type="password",
-                    key="visitor_research_api_key",
-                    help="DeepSeek can still write the lesson; this key is used only for grounded web search.",
-                    placeholder="Required for cited research",
-                )
-
             create_video = st.toggle(
                 "Create illustrated MP4",
                 value=True,
@@ -693,7 +688,6 @@ def main() -> None:
 
             keys_ready = (
                 bool(text_key.strip())
-                and (not research_enabled or bool(research_key.strip()))
                 and (not create_video or (bool(image_key.strip()) and bool(narration_key.strip())))
             )
             if keys_ready:
@@ -733,7 +727,6 @@ def main() -> None:
                     narration_key=narration_key,
                     narration_voice=narration_voice,
                     research_enabled=research_enabled,
-                    research_key=research_key,
                 )
             st.caption("Keys stay in this Streamlit session. They are never written to files, logs, or environment variables.")
 
@@ -770,7 +763,7 @@ def main() -> None:
                 text_provider=text_config["id"], text_model=text_model, text_key=text_key,
                 image_provider=image_config["id"], image_model=image_model, image_key=image_key,
                 create_video=create_video, narration_key=narration_key, narration_voice=narration_voice,
-                research_enabled=research_enabled, research_key=research_key,
+                research_enabled=research_enabled,
             )
             bundle = st.session_state.bundle
         visual_ready = create_video and bool(text_key.strip()) and bool(image_key.strip()) and bool(narration_key.strip())

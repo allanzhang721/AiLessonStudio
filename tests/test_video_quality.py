@@ -119,6 +119,11 @@ class VideoQualityTests(unittest.TestCase):
         self.assertEqual(len(app.get("progress")), 6)
         self.assertEqual(len(app.dataframe), 0)
         self.assertTrue(any("checker tests teach us" in str(item.value).lower() for item in app.markdown))
+        app.selectbox[0].select("DeepSeek").run()
+        self.assertFalse(app.exception)
+        text_input_labels = [item.label for item in app.text_input]
+        self.assertIn("DeepSeek text API key", text_input_labels)
+        self.assertNotIn("OpenAI research API key", text_input_labels)
 
 
 if __name__ == "__main__":
