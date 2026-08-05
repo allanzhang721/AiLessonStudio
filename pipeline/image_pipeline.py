@@ -67,7 +67,7 @@ def _generate_first_frame_openai(client, prompt: str, out_path: Path, size: str 
                 model=image_model,
                 prompt=prompt,
                 size=size,
-                quality="medium",
+                quality="high",
                 output_format="png",
             )
             out_path.write_bytes(_extract_b64_image(response))
@@ -88,7 +88,14 @@ def _edit_next_frame_openai(client, prev_path: Path, prompt: str, out_path: Path
     for attempt in range(1, 4):
         try:
             with open(prev_path, "rb") as fh:
-                response = client.images.edit(model=image_model, image=fh, prompt=prompt, size=size)
+                response = client.images.edit(
+                    model=image_model,
+                    image=fh,
+                    prompt=prompt,
+                    size=size,
+                    quality="high",
+                    output_format="png",
+                )
             out_path.write_bytes(_extract_b64_image(response))
             return out_path
         except Exception as exc:

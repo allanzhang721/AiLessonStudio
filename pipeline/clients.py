@@ -1,14 +1,11 @@
 """
 clients.py — Build API clients for different providers.
 
-Centralises client construction so every module that needs an LLM / image /
-video / TTS client can call ``build_client(provider)`` without caring about
-base URLs or key lookup.
+Centralises client construction for text, image, and narration APIs.
 
 Supported providers:
   text:   "openai", "deepseek"
   image:  "openai", "wanx"
-  video:  "sora",   "wanx"
   tts:    "openai"
 """
 
@@ -74,27 +71,6 @@ def build_image_client(provider: str = "openai", api_key: Optional[str] = None):
 
     return None
 
-
-def build_video_client(provider: str = "sora", api_key: Optional[str] = None):
-    """Return a client for video generation."""
-    try:
-        from openai import OpenAI
-    except ImportError:
-        OpenAI = None  # type: ignore[assignment]
-
-    if provider == "sora":
-        key = api_key or get_key("OPENAI_API_KEY")
-        if not key or OpenAI is None:
-            return None
-        return OpenAI(api_key=key)
-
-    if provider == "wanx":
-        key = api_key or get_key("DASHSCOPE_API_KEY")
-        if not key:
-            return None
-        return {"provider": "wanx", "api_key": key}
-
-    return None
 
 
 def build_tts_client(api_key: Optional[str] = None):

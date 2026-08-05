@@ -53,38 +53,6 @@ IMAGE_PROVIDERS = {
 }
 
 
-DEMO_BUNDLE = {
-    "title": "Why removing one species can change a food web",
-    "learning_objective": "Explain how a population change can spread through an ecosystem.",
-    "explanation": (
-        "A food web connects organisms through feeding relationships, so changing one population can affect several others. "
-        "Suppose a predator is removed. Its prey may survive in larger numbers and consume more plants or smaller animals. "
-        "Those resources can then decline, leaving less food or habitat for other species. The change can continue through several "
-        "links; ecologists call this a trophic cascade. The result is not always a simple increase or decrease because organisms "
-        "often have more than one food source, and competition, disease, migration, and weather also influence populations. "
-        "The strongest effects usually occur when the removed species has many connections or performs a role that few other "
-        "species can replace. A food web therefore helps us predict possible directions of change, but field evidence is still "
-        "needed to measure how large each effect will be."
-    ),
-    "key_ideas": [
-        "Species are connected by feeding relationships.",
-        "A population change can spread through several links.",
-        "Highly connected species can have especially large effects.",
-        "Food webs predict possibilities, not exact population sizes.",
-    ],
-    "worked_example": "If wolves decrease, deer may increase, heavier browsing may reduce young trees, and species that depend on those trees may lose habitat.",
-    "common_mistake": "A food chain is not the whole food web: most organisms have several feeding relationships.",
-    "quick_check": "Why might removing a predator eventually affect plants?",
-    "quiz": [
-        {"question": "What is a trophic cascade?", "choices": ["A change that spreads through feeding relationships", "A seasonal migration", "A type of cell division", "A weather cycle"], "answer": "A", "explanation": "It is a chain of ecological effects across trophic levels.", "concept": "trophic cascade"},
-        {"question": "What may happen first when a predator is removed?", "choices": ["Its prey increases", "All plants disappear", "Weather changes", "Decomposers vanish"], "answer": "A", "explanation": "Reduced predation can allow the prey population to grow.", "concept": "predator-prey"},
-        {"question": "Why are exact outcomes difficult to predict?", "choices": ["Food webs contain many interacting factors", "Energy is not conserved", "Species never compete", "All organisms eat one food"], "answer": "A", "explanation": "Multiple food sources and environmental factors alter the response.", "concept": "system complexity"},
-        {"question": "Which species can cause a large cascade?", "choices": ["A highly connected species", "Only the smallest species", "Only plants", "Any species equally"], "answer": "A", "explanation": "Many connections or a hard-to-replace role can amplify its effect.", "concept": "ecological role"},
-        {"question": "What should support a food-web prediction?", "choices": ["Field evidence", "A single guess", "Color alone", "No measurements"], "answer": "A", "explanation": "Observations and measurements test the predicted effect size.", "concept": "evidence"},
-    ],
-}
-
-
 def _init_state() -> None:
     defaults = {
         "bundle": None,
@@ -137,12 +105,15 @@ def _create_lesson(
     image_model: str,
     image_key: str,
     create_video: bool,
+    narration_key: str,
+    narration_voice: str,
 ) -> None:
     if not question.strip():
         st.error("Enter a question first.")
         return
     text_key = text_key.strip()
     image_key = image_key.strip()
+    narration_key = narration_key.strip()
     if not text_key:
         st.error("Enter your text API key in Step 1.")
         return
@@ -150,6 +121,9 @@ def _create_lesson(
         st.error("Enter your image API key in Step 1, or turn off illustrated MP4.")
         return
 
+    if create_video and not narration_key:
+        st.error("Enter an OpenAI narration API key in Step 1, or turn off illustrated MP4.")
+        return
     client = build_text_client(text_provider, api_key=text_key)
     if client is None:
         st.error(f"The {text_provider} text client could not be initialized.")
@@ -182,6 +156,7 @@ def _create_lesson(
                 "text_model": text_model,
                 "image_provider": image_provider if create_video else None,
                 "image_model": image_model if create_video else None,
+                "narration_voice": narration_voice if create_video else None,
             }
             st.session_state.bundle = bundle
             st.session_state.gate1 = gate1
@@ -210,6 +185,8 @@ def _create_lesson(
                     image_model=image_model,
                     text_api_key=text_key,
                     image_api_key=image_key,
+                    tts_api_key=narration_key,
+                    tts_voice=narration_voice,
                 )
                 st.session_state.pipeline_result = run
                 run_dir = Path(run["out_dir"])
@@ -332,14 +309,8 @@ def main() -> None:
 
     with st.sidebar:
         st.markdown("## Create a lesson")
-        mode = st.radio(
-            "Mode",
-            ["API mode", "Demo"],
-            horizontal=True,
-            label_visibility="collapsed",
-        )
 
-        if mode == "API mode":
+        with st.container():
             st.markdown("### 1. Connect your models")
             text_label = st.selectbox("Text provider", list(TEXT_PROVIDERS))
             text_config = TEXT_PROVIDERS[text_label]
@@ -355,7 +326,7 @@ def main() -> None:
 
             create_video = st.toggle(
                 "Create illustrated MP4",
-                value=False,
+                value=True,
                 help="Uses seven image calls. Text-only lessons need no image key.",
             )
             image_label = "OpenAI"
@@ -363,6 +334,8 @@ def main() -> None:
             image_model_label = next(iter(image_config["models"]))
             image_model = image_config["models"][image_model_label]
             image_key = ""
+            narration_key = ""
+            narration_voice = "marin"
             if create_video:
                 image_label = st.selectbox("Image provider", list(IMAGE_PROVIDERS))
                 image_config = IMAGE_PROVIDERS[image_label]
@@ -381,8 +354,33 @@ def main() -> None:
                     placeholder="Paste your image key - session only",
                 )
                 st.warning("Seven image calls may incur noticeable cost and take several minutes.")
+                st.markdown("#### Narration")
+                narration_voice = st.selectbox(
+                    "Teaching voice",
+                    ["marin", "cedar", "coral", "sage", "alloy"],
+                    help="Marin and cedar are recommended for the clearest narration.",
+                )
+                reusable_openai_key = (
+                    text_key if text_label == "OpenAI"
+                    else image_key if image_label == "OpenAI"
+                    else ""
+                )
+                if reusable_openai_key:
+                    narration_key = reusable_openai_key
+                    st.caption("Narration will reuse the OpenAI key already entered above.")
+                else:
+                    narration_key = st.text_input(
+                        "OpenAI narration API key",
+                        type="password",
+                        key="visitor_narration_api_key",
+                        help="Required for high-quality AI narration when text and images use non-OpenAI providers.",
+                    )
+                st.caption("The narration voice is AI-generated, not a human recording.")
 
-            keys_ready = bool(text_key.strip()) and (not create_video or bool(image_key.strip()))
+            keys_ready = bool(text_key.strip()) and (
+                not create_video
+                or (bool(image_key.strip()) and bool(narration_key.strip()))
+            )
             if keys_ready:
                 st.success("API setup ready")
             else:
@@ -417,21 +415,15 @@ def main() -> None:
                     image_model=image_model,
                     image_key=image_key,
                     create_video=create_video,
+                    narration_key=narration_key,
+                    narration_voice=narration_voice,
                 )
             st.caption("Keys stay in this Streamlit session. They are never written to files, logs, or environment variables.")
-        else:
-            st.markdown("Try the complete interface without an API key.")
-            question, subject = "How can removing one species change a food web?", "Biology"
-            if st.button("Open demo", type="primary", use_container_width=True):
-                st.session_state.bundle = DEMO_BUNDLE
-                st.session_state.gate1 = {"pass": True, "scores": {"accuracy": 4, "completeness": 4, "logical_flow": 4, "grade_fit": 4, "clarity": 4}, "issues": []}
-                st.session_state.pipeline_result = None
-                st.rerun()
 
     st.markdown("<div class='hero'><h1>VisualLesson AI</h1><p>Clear explanations, visual stories, and feedback built for high-school learners.</p></div>", unsafe_allow_html=True)
     bundle = st.session_state.bundle
     if not bundle:
-        st.info("Ask a question in the sidebar, or open the ready-made demo.")
+        st.info("Connect your API providers and ask a question in the sidebar to create a lesson.")
         st.markdown("#### What changed")
         c1, c2, c3 = st.columns(3)
         c1.markdown("<div class='card'><b>Useful Gate 1</b><br>Checks accuracy, logic, completeness, clarity, and grade fit before media spending.</div>", unsafe_allow_html=True)

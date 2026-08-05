@@ -8,7 +8,6 @@ Public helpers:
   get_key(name)       — return the key string or ""
   available_text_providers()  — which LLM providers have a key configured
   available_image_providers() — which image providers have a key configured
-  available_video_providers() — which video providers have a key configured
 """
 
 from __future__ import annotations
@@ -82,14 +81,4 @@ def available_image_providers() -> list[str]:
         providers.append("openai")       # gpt-image-1
     if has_key("DASHSCOPE_API_KEY"):
         providers.append("wanx")         # Alibaba Wanx
-    return providers
-
-
-def available_video_providers() -> list[str]:
-    """Return list of video-gen provider names that have a valid API key."""
-    providers = []
-    if has_key("OPENAI_API_KEY"):
-        providers.append("sora")         # OpenAI Sora
-    if has_key("DASHSCOPE_API_KEY"):
-        providers.append("wanx")         # Alibaba Wanx video
     return providers

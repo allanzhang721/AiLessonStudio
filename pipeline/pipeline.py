@@ -28,7 +28,6 @@ Output layout (under output_root/<question_id>/):
 Provider selection:
   text_provider   — "openai" or "deepseek" (for planner + checker repair)
   image_provider  — "openai" or "wanx"     (for frame generation)
-  video_provider  — "sora" or "wanx"       (for single-video, passed through)
 
 Clients are built via clients.py which reads keys from api_keys.txt / env.
 """
@@ -52,7 +51,7 @@ from .frame_checker import checker2_validate_lesson_frames
 from .image_pipeline import plan_to_images
 from .planner import question_explanation_grade_to_plan
 from .utils import ensure_dir, make_gif, save_json, save_text
-from .video_pipeline import build_narration_script, estimate_video_fps, images_to_video, synthesize_clean_voiceover
+from .video_pipeline import images_to_video, synthesize_clean_voiceover
 
 
 def _model_for_text_provider(provider: str) -> str:
@@ -90,6 +89,8 @@ def run_pipeline(
     text_api_key: Optional[str] = None,
     image_api_key: Optional[str] = None,
     api_key: Optional[str] = None,
+    tts_api_key: Optional[str] = None,
+    tts_voice: str = "marin",
 ) -> dict:
     """
     End-to-end pipeline:
@@ -105,9 +106,9 @@ def run_pipeline(
     resolved_image_key = image_api_key or api_key
     text_client = build_text_client(text_provider, api_key=resolved_text_key) if run_openai else None
     image_client = build_image_client(image_provider, api_key=resolved_image_key) if run_openai else None
-    tts_key = resolved_text_key if text_provider == "openai" else (
+    tts_key = tts_api_key or (resolved_text_key if text_provider == "openai" else (
         resolved_image_key if image_provider == "openai" else None
-    )
+    ))
     tts_client = build_tts_client(api_key=tts_key) if run_openai and tts_key else None
 
     text_model = text_model or _model_for_text_provider(text_provider)
@@ -198,15 +199,13 @@ def run_pipeline(
     stage_times["gif_seconds"] = round(time.time() - t_gif, 3)
 
     t_voice = time.time()
-    narration_script = build_narration_script(plan)
-    voiceover_path = synthesize_clean_voiceover(tts_client, plan, out_dir)
+    voiceover_path = synthesize_clean_voiceover(tts_client, plan, out_dir, voice=tts_voice)
+    if run_openai and voiceover_path is None:
+        raise ValueError("An OpenAI narration key is required to create the lesson video.")
     stage_times["voiceover_seconds"] = round(time.time() - t_voice, 3)
 
     t_video = time.time()
-    video_fps = 1.0
-    if voiceover_path is not None:
-        video_fps = estimate_video_fps(len(frames), narration_script)
-    video_path = images_to_video(frames, out_dir / "storyboard.mp4", fps=video_fps, audio_path=voiceover_path)
+    video_path = images_to_video(frames, out_dir / "storyboard.mp4", audio_path=voiceover_path, plan=plan)
     stage_times["video_seconds"] = round(time.time() - t_video, 3)
 
     total_seconds = round(time.time() - t0, 3)
@@ -221,6 +220,11 @@ def run_pipeline(
         "render_meta": plan.get("render_meta", {}),
         "stage_times": stage_times,
         "total_seconds": total_seconds,
+        "video_quality": {
+            "resolution": "1920x1080",
+            "fps": 30,
+            "narration_voice": tts_voice,
+        },
         "artifacts": {
             "plan_json": str(out_dir / "plan.json"),
             "gif": str(gif_path),
