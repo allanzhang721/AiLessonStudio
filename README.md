@@ -20,6 +20,8 @@ https://teachhighschool.streamlit.app/
 
 White paper: [Explain It! Technical Product White Paper](docs/whitepaper/Explain_It_White_Paper.pdf)
 
+Contributor career, portfolio, and interview guide: [docs/CONTRIBUTOR_CAREER_GUIDE.md](docs/CONTRIBUTOR_CAREER_GUIDE.md)
+
 The hosted app asks each visitor for the required API credentials. Keys remain in the active Streamlit session and are not written to files, logs, or environment variables.
 
 ## Provider choices
