@@ -105,7 +105,7 @@ See the [deployment guide](docs/DEPLOYMENT.md) for deployment details.
 ## Main production files
 
 - `streamlit_app.py`: Streamlit Cloud entrypoint
-- `app_v2.py`: API-only product interface
+- `explain_it/app.py`: API-only product interface
 - `pipeline/lesson_service.py`: lesson and quiz generation
 - `pipeline/quality_gates.py`: explanation review
 - `pipeline/planner.py`: seven-scene visual plan

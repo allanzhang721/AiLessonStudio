@@ -9,8 +9,7 @@ import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 
 
-ROOT = Path(__file__).resolve().parents[2]
-OUTPUT = ROOT / "paper_figures"
+OUTPUT = Path(__file__).resolve().parent / "figures"
 
 NAVY = "#1f4e79"
 ORANGE = "#d95f02"

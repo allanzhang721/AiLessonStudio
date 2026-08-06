@@ -7,7 +7,7 @@ import imageio.v2 as imageio
 from PIL import Image, ImageDraw
 from streamlit.testing.v1 import AppTest
 
-from app_v2 import _waiting_tip
+from explain_it.app import _waiting_tip
 from pipeline.lesson_service import build_concept_map
 from pipeline.video_pipeline import (
     build_narration_script,
