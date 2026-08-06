@@ -1,6 +1,6 @@
-# Explain It! Contributor Career, Portfolio, and Interview Guide
+# Explain It! Contributor University Application, Career, Portfolio, and Interview Guide
 
-**For collaborators, contributors, presenters, and future maintainers**
+**For university applicants, collaborators, contributors, presenters, and future maintainers**
 **Guide version:** 1.0, August 2026
 
 > This guide helps contributors describe Explain It! accurately and confidently. Replace every bracketed placeholder with evidence from your own work. Use **we** for team decisions and shared outcomes; use **I** only for work you personally performed and can explain in detail.
@@ -447,9 +447,416 @@ Prepare: a before/after screenshot and the user problem that motivated it.
 | “Improved quality” | “Added pre-media explanation checks and per-frame render checks before download.” |
 | “Published research” | “Co-authored an open-access project white paper archived on Zenodo with a DOI.” |
 
-## 11. Résumé and CV guide
+## 11. University Application CV and Résumé Guide
 
-### Where it belongs
+This is the primary application section for student contributors. An admissions reader does not need a compressed copy of the technical documentation. They need to understand what motivated you, what you personally contributed, how you grew, how you worked with others, and what you may contribute to a university community.
+
+### What this project can demonstrate
+
+| Quality | Possible project evidence | What you must make personal |
+|---|---|---|
+| Intellectual curiosity | Investigating how generated lessons can be checked | The question that interested you and why |
+| Initiative | Moving from an idea to an app and public documentation | The part you started or carried forward |
+| Technical depth | APIs, gates, media, testing, deployment, or LaTeX | One problem you can explain precisely |
+| Interdisciplinary thinking | Computing, education, design, and mathematics | How you connected fields in your reasoning |
+| Collaboration | A three-person equal-contribution project | Your responsibility and how disagreement was handled |
+| Reflection | Recording limits and revising weak decisions | What you were wrong about and what changed your view |
+| Communication | Student explanations, UI, figures, and white paper | How you adapted an idea for an audience |
+| Responsibility | Privacy boundaries and careful quality claims | A decision where honesty or user protection mattered |
+| Persistence | Debugging, revision, testing, and deployment | One concrete obstacle and your response |
+
+Select the two or three qualities best supported by your contribution. Do not force all of them into every application component.
+
+### Build a private evidence sheet first
+
+```text
+Project: Explain It!
+Dates actively involved:
+Honest hours per week and weeks per year:
+My agreed role:
+The problem that personally interested me:
+Three things I personally created or changed:
+1.
+2.
+3.
+Evidence for each item:
+One difficult technical or team decision:
+One failure or revision:
+One person or group affected by my work:
+One skill I can now use independently:
+One question I want to study at university:
+Repository, app, paper, DOI, and evidence links:
+```
+
+Do not count teammates' hours, inactive periods, or automated generation time when you were not working.
+
+### Decide where the project belongs
+
+| Application location | Purpose | Best content |
+|---|---|---|
+| Activities list | Show involvement quickly | Role, action, scope, concrete output |
+| Honors | Report a real competitive honor | Only an actual award; a DOI is not an honor |
+| Academic CV | Supply technical and scholarly detail | Contributions, skills, citation, presentations |
+| Additional information | Clarify necessary context | Team structure, access note, concise links |
+| Personal statement | Reveal character and growth | A scene, conflict, realization, and reflection |
+| Why-major essay | Connect experience to future questions | What you now want to study and why |
+| Community essay | Show contribution to others | Listening, teamwork, responsibility, communication |
+| Portfolio supplement | Demonstrate work | Demo, architecture, selected evidence, reflection |
+| Interview | Demonstrate authentic ownership | Explanation, contribution, limitation, next question |
+
+Every appearance should add something new. The activity entry summarizes output; an essay tells the human story; a CV gives technical detail; a portfolio shows evidence.
+
+### Choose an accurate role title
+
+Possible titles, depending on the team's agreement and your actual work:
+
+- Co-creator and equal contributor
+- Student developer and co-author
+- AI education project contributor
+- Software and research contributor
+- Product design and documentation contributor
+- Multimodal pipeline contributor
+- [Specific area] lead and equal contributor
+
+Use “lead” only if you owned or coordinated that area. Use “founder” only if you founded an organization or initiative. “Researcher” should not imply a university appointment or peer-reviewed laboratory position.
+
+### Activities-list entry
+
+Application platforms have different and changing character limits. Check the current form and count the final text.
+
+```text
+Activity type: Computer/Technology, Research, Academic, or Other
+Position: Co-creator & Equal Contributor
+Organization: Explain It! / Jiaxing Senior High School (BC Offshore Program)
+Dates: [Accurate dates]
+Hours and weeks: [Honest estimates]
+```
+
+Concise description options:
+
+**Balanced:**
+
+> Co-built a staged AI lesson app generating checked explanations, seven-scene narrated videos, practice, sources, and concept maps; co-authored its Zenodo white paper.
+
+**Computer science:**
+
+> Developed [component] in a Python/Streamlit multimodal lesson pipeline; added [test/gate/provider feature], deployed the app, and co-authored documentation.
+
+**Education:**
+
+> Designed [contribution] to make generated high-school lessons clearer and more inspectable; documented limits and proposed student evaluation.
+
+**Research communication:**
+
+> Investigated staged generation and quality checks, created [figure/analysis], and co-authored open-access software documentation with a Zenodo DOI.
+
+Replace the bracketed text and shorten to the platform limit. Do not combine all versions.
+
+### Strong versus weak wording
+
+| Weak | Problem | Stronger direction |
+|---|---|---|
+| “Used AI to make videos” | Generic | Name your component and the learner problem |
+| “Published a famous research paper” | Unsupported | “Co-authored a project white paper archived on Zenodo” |
+| “Led everything” | Conflicts with equal contribution | Identify the area you led and the shared outcome |
+| “Improved accuracy by 90%” | Unverified | Name the checks or tests actually completed |
+| “Helped with coding” | Vague | Name the module, behavior, test, or figure |
+| “Revolutionized learning” | No outcome evidence | State intended benefit and evaluation still needed |
+
+### One-page university CV structure
+
+One page is usually enough. Use a second page only when requested or when substantial research, awards, service, and employment genuinely require it.
+
+Recommended order:
+
+1. Name and contact information
+2. Education
+3. Selected projects or research
+4. Publications or technical writing
+5. Awards and distinctions
+6. Leadership, service, or activities
+7. Technical and language skills
+
+For computer science, place Explain It! immediately after Education. For education, cognitive science, design, or an interdisciplinary program, emphasize the learner problem and evaluation questions alongside implementation.
+
+### Complete student CV template
+
+```text
+[FULL NAME]
+[City, Country] | [Professional email] | [Portfolio] | [GitHub]
+
+EDUCATION
+Jiaxing Senior High School (BC Offshore Program), [City, Country]
+Expected graduation: [Month Year]
+Selected coursework: [Relevant or advanced courses]
+Academic distinctions: [Verified distinctions only]
+
+SELECTED PROJECTS AND RESEARCH
+Explain It! — Co-creator and Equal Contributor                       [Dates]
+Python, Streamlit, multimodal model APIs, Pillow, FFmpeg, Graphviz
+• Co-developed a staged application transforming high-school questions into checked
+  explanations, seven-scene lessons, narration, practice, sources, related concepts,
+  and browser-compatible 1080p videos.
+• Personally [implemented/designed/analyzed] [component] using [method]; verified it
+  through [tests, review, sample output, or other evidence].
+• Helped design quality gates that inspect explanation structure before costly media
+  and rendered-frame health before download, while documenting their limitations.
+• Co-authored a white paper archived on Zenodo with DOI 10.5281/zenodo.21816608.
+
+PUBLICATIONS AND TECHNICAL WRITING
+Shen, M., Yan, Y., & Yu, J. (2026). Explain It!: Why We Generate, Check,
+and Compose High-School Lessons in Stages. Zenodo.
+https://doi.org/10.5281/zenodo.21816608
+Contribution: [Verified writing, figure, evaluation, or editing work].
+
+LEADERSHIP, SERVICE, AND ACTIVITIES
+[Role], [Organization]                                              [Dates]
+• [Action, people served, result, and evidence.]
+
+AWARDS AND DISTINCTIONS
+[Award], [Granting organization], [Official level/selectivity]       [Year]
+
+SKILLS
+Programming: [Skills you can demonstrate]
+Tools: [Tools you used personally]
+Languages: [Language and honest proficiency]
+Interests: [Optional; specific and genuine]
+```
+
+### University CV bullet sets
+
+Choose two to four bullets supported by your evidence.
+
+**Interdisciplinary:**
+
+```text
+• Co-developed a Python/Streamlit learning system combining generated text, visual
+  scenes, narration, practice, sources, and concept exploration.
+• Personally led [contribution], connecting [technical area] with high-school learner
+  needs and validating the result through [evidence].
+• Co-authored a white paper on architecture, mathematical rationale, limitations,
+  and future classroom evaluation, archived on Zenodo with a DOI.
+```
+
+**Computer science:**
+
+```text
+• Implemented [module] in a staged multimodal pipeline using structured outputs,
+  capability-aware provider routing, and explicit failure handling.
+• Added [tests/checks] for [behavior], detecting malformed responses, unreadable
+  frames, or incompatible video output before release.
+• Helped deploy the Python 3.12 Streamlit app and documented trade-offs in state,
+  long-running generation, cost, and provider reliability.
+```
+
+**Education or cognitive science:**
+
+```text
+• Designed [lesson panel/storyboard/concept feature] around explanations, examples,
+  misconceptions, practice, and connections for high-school learners.
+• Distinguished readable output from actual learning and proposed pre/post, retention,
+  transfer, and confidence-calibration measures for future evaluation.
+• Revised [feature] after [real feedback/problem], learning how interface design can
+  influence attention and student trust.
+```
+
+**Research:**
+
+```text
+• Investigated whether staged checks detect selected lesson and visual failures before
+  expensive media generation, separating production checks from offline experiments.
+• Analyzed [metric/figure/method] and documented threats including correlated model
+  errors, proxy metrics, and dataset mismatch.
+• Contributed [section/figure] to a 24-page LaTeX white paper archived as open-access
+  software documentation.
+```
+
+**Design or communication:**
+
+```text
+• Redesigned [screen/visualization] so students could understand model setup, quality
+  status, sources, or related concepts without specialist language.
+• Revised [figures/captions/layout] to improve hierarchy, contrast, and explanation of
+  the staged workflow.
+• Balanced technical precision with high-school-level communication in the app and paper.
+```
+
+### Academic CV publication entry
+
+```text
+Shen, M., Yan, Y., & Yu, J. (2026). Explain It!: Why We Generate, Check,
+and Compose High-School Lessons in Stages [Software documentation]. Zenodo.
+https://doi.org/10.5281/zenodo.21816608
+Equal contribution. Personal role: [Accurate contribution].
+```
+
+Use the team's canonical author order. Resolve any metadata/PDF inconsistency before submitting. A DOI is a persistent identifier, not an award or evidence of peer review; place it under Publications, Technical Writing, Research Output, or Projects—not Honors.
+
+### Additional-information section
+
+Use this only for necessary context that does not fit elsewhere:
+
+> Explain It! was developed by three student equal contributors. It is a deployed Python/Streamlit prototype composing checked text, generated images, AI narration, and deterministic video into high-school lesson packages. My primary responsibility was [role]; I [action and evidence]. We archived the project white paper as software documentation on Zenodo (doi:10.5281/zenodo.21816608). The project has not undergone journal peer review or a controlled student-learning study; our paper distinguishes automated checks from guarantees of correctness.
+
+Do not paste the full project description. Include links only if the application accepts them and reviewers may open them.
+
+### Personal statement: tell a human story
+
+The app is the setting; you are the subject. Use:
+
+1. **Moment:** a specific failure, disagreement, reaction, or surprising result.
+2. **Question:** what it made you wonder.
+3. **Action:** the choices you personally made.
+4. **Revision:** what failed and how your thinking changed.
+5. **Meaning:** the value, habit, or future question you gained.
+
+Possible scenes include a beautiful but misleading image, an unreadable provider selector, a formal chart that confused users, overlapping arrows in a paper figure, or the decision to remove an impressive but expensive direct-video feature.
+
+Sample paragraph:
+
+> The first version that looked “finished” taught me the most. Its video moved smoothly, but one scene made the concept harder to understand. I had treated generation as the final step; now I saw it as the beginning of inspection. Our team separated the lesson into smaller artifacts and placed checks before expensive decisions. I became less interested in whether an AI output looked impressive and more interested in whether a student could question, trace, and revise it. That change—from celebrating output to examining process—now shapes how I approach technical problems.
+
+Adapt this to your true experience. Do not submit it unchanged. Avoid spending the essay on a list of libraries.
+
+### Why-major supplements
+
+**Computer science:** connect the project to interfaces, validation, systems, HCI, graphics, or machine learning—not merely “I enjoy AI.”
+
+> A model call became a useful system only after we defined interfaces, validated uncertain outputs, handled failures, and designed for users. Building [component] made me want to study [field] so I can investigate [specific question].
+
+**Education or learning science:**
+
+> Creating an explanation was easier than proving it helped anyone learn. That gap led me to questions about misconception repair, cognitive load, transfer, and confidence calibration.
+
+**Mathematics or statistics:**
+
+> Quality gates made threshold errors concrete: rejecting an acceptable lesson and accepting a poor one have different consequences. I want deeper training in probability, statistics, and experimental design to connect engineering metrics with learner evidence.
+
+**Design or HCI:**
+
+> A technically correct control is useless when users cannot read or understand it. Revising [interface] made me interested in how hierarchy, accessibility, and trust shape use of AI systems.
+
+### Why-this-university supplements
+
+Research current opportunities from official university sources. Then complete:
+
+```text
+Experience from Explain It!:
+Question I now want to investigate:
+Relevant course, laboratory, professor, center, team, or program:
+What I could learn there:
+What experience I could contribute:
+```
+
+Use this pattern:
+
+> Through [project experience], I became interested in [question]. At [university], [verified opportunity] would help me learn [method]. I would bring experience in [contribution] while continuing to test [question] with [community or field].
+
+Verify every name shortly before submission. Do not imply that a professor will supervise you or that you will enter a selective program unless guaranteed.
+
+### Community and collaboration supplements
+
+Useful themes include separating shared credit from ownership, revising work after feedback, translating technical ideas for students, resolving attribution transparently, or teaching and learning from teammates. Describe a real interaction; “we worked well together” is not evidence.
+
+### University admissions interview questions
+
+**Why did you join?** State your genuine starting question, motivation, how your role evolved, and what changed your thinking.
+
+**What did you personally contribute?** Begin with the shared system, identify your area, name two actions and evidence, then explain an integration boundary with teammates.
+
+**What did your teammates contribute?** Explain complementary work respectfully. Equal contribution does not mean identical work.
+
+**What was your most important mistake?** Use a real mistake and its consequence. Avoid a disguised strength such as “I cared too much.”
+
+**What would you study next?** Move from product completion to evidence: name a specific learning, HCI, systems, or evaluation question and a method you want to learn.
+
+**Why is it meaningful?** Connect it to a genuine value—clarity, access, responsible AI, visual explanation, or collaboration—without inventing social impact.
+
+**Explain one decision simply.** For Gate 1, “check the recipe before cooking seven dishes” is useful; then state where the analogy breaks.
+
+**What would you do differently?** Consider earlier user testing, accessibility, contribution logs, cost telemetry, or publication-version control, tied to a real lesson.
+
+**How does it connect to your major?** Name the academic question it created, not only that you enjoyed programming.
+
+**What will you contribute on campus?** Describe a repeatable behavior such as interdisciplinary building, careful documentation, accessible communication, or peer feedback—not an unconfirmed club role.
+
+### Recommendation-letter evidence packet
+
+Give a teacher or counselor:
+
+- a one-page overview;
+- your contribution matrix;
+- dates and honest time commitment;
+- two artifacts showing your work;
+- one challenge and response;
+- one collaboration example;
+- one intellectual-growth example;
+- the citation and DOI;
+- your draft activity description;
+- and the deadline.
+
+The recommender must write independently. Ask them to discuss only qualities they observed. A teacher who did not supervise the project cannot verify technical ownership.
+
+### Portfolio or maker supplement
+
+If permitted, submit a focused artifact rather than an unexplained repository:
+
+1. One-page overview: problem, user, outcome, dates, team, role.
+2. Two-minute demo: lesson, gates, concept map, regeneration.
+3. Architecture diagram with a short explanation.
+4. Two annotated pieces of contribution evidence.
+5. Reflection: limitation, lesson, next academic question.
+
+Label every artifact:
+
+```text
+What this is:
+What I personally did:
+Who else contributed:
+Why it matters:
+What remains incomplete:
+```
+
+Never upload keys, private messages, student data, caches, checkpoints, or large raw outputs.
+
+### Emphasis by intended field
+
+- **Computer science:** decomposition, interfaces, validation, testing, media processing, deployment.
+- **AI/data science:** uncertain output, evaluation, proxy metrics, thresholds, benchmark-versus-production distinction.
+- **Education/psychology:** misconceptions, grade fit, practice, concept links, learning hypotheses, missing outcome evidence.
+- **Engineering:** constraints, cost-aware sequencing, reliability, trade-offs, integration.
+- **Design/HCI:** setup clarity, accessibility, progress, user control, recovery, trust.
+- **Media/communication:** storyboard, hierarchy, narration, sources, explaining complex ideas.
+- **Mathematics:** expected cost, decision thresholds, metrics, proofs, proxy versus target quantities.
+
+### What applicants should avoid
+
+- Do not use the same generic bullet for all three contributors.
+- Do not list tools you cannot discuss.
+- Do not treat commit count as intellectual contribution.
+- Do not call Zenodo peer reviewed or list the DOI as an honor.
+- Do not claim student impact without data.
+- Do not expose keys or billing information.
+- Do not write an essay that is mostly product features.
+- Do not hide your role behind “we” or erase teammates with “I.”
+- Do not exaggerate hours.
+- Do not rely on a live demo without backup evidence.
+- Do not let generated prose replace your own admissions voice.
+
+### Final university-application review
+
+Ask a trusted reader:
+
+1. Can they explain the project in one sentence?
+2. Can they identify your contribution?
+3. Can they name something you learned or changed your mind about?
+4. Does the work matter without exaggerated claims?
+5. Is it connected to your future academic interests?
+6. Does each application section add information?
+7. Are team credit, publication status, and limits accurate?
+8. Does the writing sound like you?
+
+### Career and internship résumé: where the project belongs
 
 Use **Projects** for software applications, **Research Experience** for evaluation work, **Publications and Technical Writing** for the Zenodo record, or **Selected Software** on a longer CV. It may appear in Projects and Publications if the entries are not repetitive.
 
@@ -544,7 +951,7 @@ Role: Equal contributor; [brief personal contribution if space permits].
 
 Use the canonical author order selected by the team. Do not reorder a formal citation to place yourself first.
 
-### High-school or university application
+### Short student résumé version
 
 ```text
 Explain It! — Co-creator and Equal Contributor
