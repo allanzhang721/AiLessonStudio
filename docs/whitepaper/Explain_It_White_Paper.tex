@@ -344,8 +344,16 @@ The planner produces a shared scene bible and seven ordered steps. Each step sta
   \node[font=\scriptsize,align=center] at (\i-0.57,0.34) {\i\\\lab};
   \ifnum\i<7 \draw[-{Latex[length=1.8mm]},navy,thick] (\i-0.13,0.34)--(\i+0.08,0.34); \fi
 }
-\draw[decorate,decoration={brace,amplitude=4pt},thick] (0,-0.12)--(6.86,-0.12);
-\node[below,font=\scriptsize] at (3.43,-0.3) {one scene bible, stable objects and color meanings};
+\node[
+  draw=navy!55,
+  rounded corners=2pt,
+  fill=navy!5,
+  text=navy,
+  font=\scriptsize,
+  minimum width=10.4cm,
+  minimum height=5.5mm,
+  align=center
+] at (3.43,-0.38) {Shared scene bible: stable objects and consistent color meanings};
 \end{tikzpicture}
 \caption{A seven-scene instructional timeline. Labels describe roles, not a mandatory subject template; the planner adapts them to the question.}
 \label{fig:timeline}
