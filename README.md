@@ -98,7 +98,7 @@ The 33-test production suite covers explanation gates, schema validation, provid
 - Entrypoint: `streamlit_app.py`
 - Python: `3.12`
 
-See `DEPLOYMENT.md` for deployment details.
+See the [deployment guide](docs/DEPLOYMENT.md) for deployment details.
 
 ## Main production files
 
