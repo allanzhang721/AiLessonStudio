@@ -1,6 +1,6 @@
 import unittest
 
-from app_v2 import IMAGE_PROVIDERS, TEXT_PROVIDERS
+from explain_it.app import IMAGE_PROVIDERS, TEXT_PROVIDERS
 from pipeline.clients import build_image_client, chat_completion
 from pipeline.image_pipeline import _find_wanx_image_url
 
